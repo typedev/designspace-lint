@@ -1,0 +1,443 @@
+# CLAUDE_DESIGNSPACE_VALIDATOR.md
+
+Component documentation for Claude Code when working with DesignSpace Validator.
+
+**Location**: `ufo_widgets_gtk4/designspace_validator/`
+
+---
+
+## Overview
+
+Unified validation system for DesignSpace documents. Combines structural checks, glyph compatibility analysis, and design quality validation into a single module with async/sync execution modes.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     ValidatorRegistry                            │
+│  - Orchestrates all checkers                                    │
+│  - Provides async (check_async) and sync (check_sync) modes     │
+│  - Reports progress per phase                                   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+          ┌───────────────────┼───────────────────┐
+          ▼                   ▼                   ▼
+    ┌──────────┐        ┌──────────┐        ┌──────────┐
+    │  File    │        │  Glyphs  │        │ Kerning  │
+    │ Checker  │        │ Checker  │        │ Checker  │
+    └──────────┘        └──────────┘        └──────────┘
+          │                   │                   │
+          └───────────────────┼───────────────────┘
+                              ▼
+                       CheckResult
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      ProblemsWindow                              │
+│  - GTK4 ColumnView with sorting/filtering                       │
+│  - Category/subcategory filter popover                          │
+│  - Double-click navigation to source/glyph                      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Categories
+
+| Code | Category | Description | Checker |
+|------|----------|-------------|---------|
+| 0 | File | Basic file validation | `checkers/file.py` |
+| 1 | Geometry | Axes, mappings | `checkers/axes.py` |
+| 2 | Sources | Source file validation | `checkers/sources.py` |
+| 3 | Instances | Instance definitions | `checkers/instances.py` |
+| 4 | Glyphs | Glyph compatibility | `checkers/glyphs.py` |
+| 5 | Kerning | Kerning consistency | `checkers/kerning.py` |
+| 6 | Font Info | Font info consistency | `checkers/fontinfo.py` |
+| 7 | Rules | Rule definitions | `checkers/rules.py` |
+| 8 | Features | Feature files | `checkers/features.py` |
+| 9 | GlyphOrder | Glyph order consistency | `checkers/glyphorder.py` |
+
+---
+
+## Glyph Problems (Category 4)
+
+### Error Codes
+
+| Code | Constant | Description | Localization |
+|------|----------|-------------|--------------|
+| 4.0 | `DIFFERENT_CONTOUR_COUNT` | Different contour count | Groups by count value |
+| 4.1 | `DIFFERENT_COMPONENTS` | Component missing in some sources | Binary: present/missing |
+| 4.2 | `DIFFERENT_ANCHORS` | Anchor missing in some sources | Binary: present/missing |
+| 4.3 | `DIFFERENT_ON_CURVES` | On-curve points differ in contour | Groups by count |
+| 4.4 | `DIFFERENT_OFF_CURVES` | Off-curve points differ in contour | Groups by count |
+| 4.5 | `WRONG_CURVE_TYPE` | Curve type mismatch | Groups by type |
+| 4.7 | `DEFAULT_GLYPH_EMPTY` | Glyph missing in default | Binary: exists in X |
+| 4.8 | `WRONG_CONTOUR_DIRECTION` | Contour direction differs | Specific source |
+| 4.9 | `INCOMPATIBLE_GLYPH` | Incompatible construction | Groups by digest |
+| 4.10 | `DIFFERENT_UNICODES` | Unicode values differ | Groups by value |
+
+### Location Patterns
+
+**Pattern A: Binary (present/missing)**
+```python
+# Problems: 4.1 (components), 4.2 (anchors), 4.7 (default empty)
+raw_data = {
+    "glyphName": "Aacute",
+    "locationType": "binary",
+    "presentIn": ["Light.ufo", "Regular.ufo"],
+    "missingIn": ["Bold.ufo", "Black.ufo"],
+}
+# Location display: "missing in Bold, Black"
+```
+
+**Pattern B: Groups (different values)**
+```python
+# Problems: 4.0 (contours), 4.3/4.4 (points), 4.5 (curve type), 4.10 (unicodes)
+raw_data = {
+    "glyphName": "g",
+    "locationType": "groups",
+    "groups": {
+        "2 contours": ["Light.ufo"],
+        "3 contours": ["Bold.ufo", "Black.ufo", "Heavy.ufo"],
+    },
+}
+# Location display: "Light ≠ 3 others" or "2 vs 3 contours"
+```
+
+**Pattern C: Differs from majority**
+```python
+# Problems: 4.8 (direction), 4.9 (incompatible)
+raw_data = {
+    "glyphName": "o",
+    "locationType": "differs",
+    "differsIn": ["Bold.ufo", "Black.ufo"],
+    "contourIndex": 0,
+}
+# Location display: "≠ Bold, Black"
+```
+
+---
+
+## Data Models
+
+### CheckResult
+
+Internal result from checkers:
+
+```python
+@dataclass
+class CheckResult:
+    category: int           # 0-9
+    code: int              # Error code within category
+    description: str       # Human-readable description
+    location: str = ""     # Source name or summary
+    glyph_name: str | None = None
+    group_name: str | None = None
+    details: str = ""      # Detailed explanation
+    is_structural: bool = False  # Blocks designspace usage
+    raw_data: dict = None  # Action data + source details
+```
+
+### ProblemItem
+
+GObject wrapper for GTK display:
+
+```python
+class ProblemItem(GObject.Object):
+    # Properties
+    category: int          # GObject.Property
+    error_code: int
+    description: str
+    location: str
+    glyph_name: str
+    group_name: str
+    details: str
+    is_structural: bool
+
+    # Computed
+    raw_data: dict         # Original data for actions
+    category_name: str     # "Glyphs", "Kerning", etc.
+    severity: int          # 0=structural, 1=design, 2=info
+    severity_icon: str     # Icon name
+    has_glyph: bool
+    has_location: bool
+```
+
+---
+
+## Basic Usage
+
+### Async Validation (for UI)
+
+```python
+from ufo_widgets_gtk4.designspace_validator import ValidatorRegistry
+
+registry = ValidatorRegistry(designspace_entry=entry)
+
+def on_phase(name: str, current: int, total: int):
+    print(f"Phase: {name} ({current}/{total})")
+
+def on_complete(items: list[ProblemItem]):
+    print(f"Found {len(items)} problems")
+    for item in items:
+        print(f"  {item.category_name}: {item.description}")
+
+registry.check_async(
+    on_phase=on_phase,
+    on_complete=on_complete,
+)
+```
+
+### Sync Validation (blocking)
+
+```python
+items = registry.check_sync()
+for item in items:
+    print(f"{item.category_name}: {item.description}")
+```
+
+### Partial Recheck
+
+```python
+# Recheck only specific glyphs after fixing
+registry.check_glyphs_async(
+    glyph_names={"A", "B", "C"},
+    on_complete=on_complete,
+)
+```
+
+---
+
+## ProblemsWindow
+
+GTK4 window for displaying validation results.
+
+### Creation
+
+```python
+from ufo_widgets_gtk4.designspace_validator import ProblemsWindow
+
+window = ProblemsWindow(
+    designspace=designspace_entry,
+    editor_window=main_window,  # For navigation callbacks
+)
+window.present()
+
+# Run validation
+window.run_validation()
+```
+
+### Features
+
+- **ColumnView** with sortable columns (Category, Glyph, Location, Description)
+- **Filter popover** by category/subcategory
+- **Double-click navigation** to source or glyph
+- **Recheck Selected** for partial validation
+- **Copy to clipboard** for bug reports
+
+### Double-Click Behavior
+
+```python
+def _on_row_activated(self, column_view, position):
+    item = self._selection.get_item(position)
+
+    if item.has_glyph:
+        sources = self._get_problem_sources(item)
+        if len(sources) == 1:
+            # Single source: switch and open immediately
+            self._switch_and_open_glyph(sources[0], item.glyph_name)
+        else:
+            # Multiple sources: show picker popover
+            self._show_source_picker_popover(item, sources)
+
+    elif item.raw_data.get("path"):
+        # Source problem: switch to that source
+        self._action_switch_source_by_path(item.raw_data["path"])
+```
+
+### Source Picker Popover
+
+When a problem affects multiple sources:
+
+```
+┌─────────────────────────────────────────────┐
+│  g.ss10 — different contour count           │
+├─────────────────────────────────────────────┤
+│  2 contours (1 source):                     │
+│    ● Light.ufo                              │
+│                                             │
+│  3 contours (3 sources):                    │
+│    ○ Bold.ufo                               │
+│    ○ Black.ufo                              │
+│    ○ Heavy.ufo                              │
+├─────────────────────────────────────────────┤
+│           [Open Selected]                   │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+## Filter System
+
+### FilterState
+
+```python
+from ufo_widgets_gtk4.designspace_validator import FilterState
+
+state = FilterState()
+
+# Toggle category
+state.toggle_category(CATEGORY_GLYPHS)
+
+# Toggle specific subcategory
+state.toggle_subcategory(CATEGORY_GLYPHS, "contour_count")
+
+# Check visibility
+if is_problem_visible(item, state):
+    # Show in list
+```
+
+### Filter Groups
+
+Defined in `filter_config.py`:
+
+```python
+FILTER_GROUPS = {
+    CATEGORY_GLYPHS: {
+        "name": "Glyphs",
+        "subcategories": {
+            "contour_count": {"codes": [0], "name": "Contour Count"},
+            "components": {"codes": [1], "name": "Components"},
+            "anchors": {"codes": [2], "name": "Anchors"},
+            "points": {"codes": [3, 4], "name": "Point Counts"},
+            "curve_type": {"codes": [5], "name": "Curve Types"},
+            "empty": {"codes": [7], "name": "Missing in Default"},
+            "direction": {"codes": [8], "name": "Contour Direction"},
+            "incompatible": {"codes": [9], "name": "Incompatible"},
+            "unicodes": {"codes": [10], "name": "Unicodes"},
+        },
+    },
+    # ... other categories
+}
+```
+
+---
+
+## Creating Custom Checkers
+
+### BaseChecker
+
+```python
+from ufo_widgets_gtk4.designspace_validator.checkers.base import BaseChecker
+from ufo_widgets_gtk4.designspace_validator.model import CheckResult
+
+class MyChecker(BaseChecker):
+    CATEGORY = 10  # New category
+
+    def check(self) -> Iterator[CheckResult]:
+        for source in self.entry.sources:
+            if self._has_problem(source):
+                yield self._make_result(
+                    code=0,
+                    description="Problem description",
+                    location=source.path.name,
+                    raw_data={"path": str(source.path)},
+                )
+```
+
+### Helper Methods
+
+```python
+class BaseChecker:
+    def _make_result(
+        self,
+        code: int,
+        description: str,
+        location: str = "",
+        glyph_name: str | None = None,
+        group_name: str | None = None,
+        details: str = "",
+        is_structural: bool = False,
+        raw_data: dict | None = None,
+    ) -> CheckResult:
+        """Create CheckResult with category auto-filled."""
+
+    @property
+    def doc(self) -> DesignSpaceDocument:
+        """Access designspace document."""
+
+    @property
+    def entry(self) -> DesignSpaceEntry:
+        """Access entry with loaded fonts."""
+```
+
+---
+
+## Import Paths
+
+```python
+# Top-level
+from ufo_widgets_gtk4.designspace_validator import (
+    # Registry
+    ValidatorRegistry,
+    PHASES,
+    # Window (lazy loaded)
+    ProblemsWindow,
+    # Category constants
+    CATEGORY_FILE,
+    CATEGORY_GEOMETRY,
+    CATEGORY_SOURCES,
+    CATEGORY_INSTANCES,
+    CATEGORY_GLYPHS,
+    CATEGORY_KERNING,
+    CATEGORY_FONTINFO,
+    CATEGORY_RULES,
+    CATEGORY_FEATURES,
+    CATEGORY_GLYPHORDER,
+    CATEGORY_NAMES,
+    # Severity
+    SEVERITY_STRUCTURAL,
+    SEVERITY_DESIGN,
+    SEVERITY_INFO,
+    # Data classes
+    CheckResult,
+    ProblemItem,
+    # Filter
+    FilterState,
+    FILTER_GROUPS,
+    is_problem_visible,
+)
+```
+
+---
+
+## Files
+
+| File | Description |
+|------|-------------|
+| `__init__.py` | Module exports, lazy window loading |
+| `model.py` | CheckResult, ProblemItem, constants |
+| `registry.py` | ValidatorRegistry orchestrator |
+| `window.py` | ProblemsWindow GTK4 UI |
+| `filter_config.py` | Filter groups, FilterState |
+| `filter_popover.py` | Filter UI component |
+| `checkers/base.py` | BaseChecker class |
+| `checkers/glyphs.py` | Glyph compatibility checks |
+| `checkers/sources.py` | Source file validation |
+| `checkers/kerning.py` | Kerning consistency |
+| `checkers/*.py` | Other category checkers |
+
+---
+
+## TODO: Location Enhancement
+
+Current limitation: Most glyph problems don't store source-level location info.
+
+### Planned Changes
+
+1. **GlyphsChecker**: Collect source groups for each problem type
+2. **raw_data structure**: Standardize `locationType`, `groups`, `presentIn`, `missingIn`
+3. **Location column**: Smart formatting based on `locationType`
+4. **Double-click**: Show source picker popover when multiple sources affected
