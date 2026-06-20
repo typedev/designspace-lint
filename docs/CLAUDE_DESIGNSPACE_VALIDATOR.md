@@ -2,7 +2,7 @@
 
 Component documentation for Claude Code when working with DesignSpace Validator.
 
-**Location**: `ufo_widgets_gtk4/designspace_validator/`
+**Location**: `font_rover/designspace_validator/`
 
 ---
 
@@ -172,7 +172,7 @@ class ProblemItem(GObject.Object):
 ### Async Validation (for UI)
 
 ```python
-from ufo_widgets_gtk4.designspace_validator import ValidatorRegistry
+from font_rover.designspace_validator import ValidatorRegistry
 
 registry = ValidatorRegistry(designspace_entry=entry)
 
@@ -217,7 +217,7 @@ GTK4 window for displaying validation results.
 ### Creation
 
 ```python
-from ufo_widgets_gtk4.designspace_validator import ProblemsWindow
+from font_rover.designspace_validator import ProblemsWindow
 
 window = ProblemsWindow(
     designspace=designspace_entry,
@@ -284,7 +284,7 @@ When a problem affects multiple sources:
 ### FilterState
 
 ```python
-from ufo_widgets_gtk4.designspace_validator import FilterState
+from font_rover.designspace_validator import FilterState
 
 state = FilterState()
 
@@ -330,8 +330,8 @@ FILTER_GROUPS = {
 ### BaseChecker
 
 ```python
-from ufo_widgets_gtk4.designspace_validator.checkers.base import BaseChecker
-from ufo_widgets_gtk4.designspace_validator.model import CheckResult
+from font_rover.designspace_validator.checkers.base import BaseChecker
+from font_rover.designspace_validator.model import CheckResult
 
 class MyChecker(BaseChecker):
     CATEGORY = 10  # New category
@@ -379,7 +379,7 @@ class BaseChecker:
 
 ```python
 # Top-level
-from ufo_widgets_gtk4.designspace_validator import (
+from font_rover.designspace_validator import (
     # Registry
     ValidatorRegistry,
     PHASES,
