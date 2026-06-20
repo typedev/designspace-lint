@@ -26,7 +26,7 @@ from ..model import CATEGORY_GLYPHORDER, CheckResult
 from .base import BaseChecker
 
 if TYPE_CHECKING:
-    from ufo_widgets_gtk4.designspace import FontSource
+    from font_rover.designspace import FontSource
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ class GlyphOrderChecker(BaseChecker):
             return
 
         try:
-            from ufo_widgets_gtk4.designspace import GlyphOrderManager
+            from font_rover.designspace import GlyphOrderManager
 
             manager = GlyphOrderManager(entry)
         except Exception as e:

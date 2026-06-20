@@ -17,7 +17,7 @@ Categories:
     9: GlyphOrder - glyph order consistency
 
 Example:
-    from ufo_widgets_gtk4.designspace_validator import ValidatorRegistry
+    from font_rover.designspace_validator import ValidatorRegistry
 
     # Async (for UI)
     registry = ValidatorRegistry(designspace_entry=entry)

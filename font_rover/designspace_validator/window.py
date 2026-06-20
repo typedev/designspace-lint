@@ -34,8 +34,8 @@ from .model import (  # noqa: E402
 from .registry import ValidatorRegistry  # noqa: E402
 
 if TYPE_CHECKING:
-    from ufo_widgets_gtk4.designspace import DesignSpaceEntry
-    from ufo_widgets_gtk4.utils import Settings
+    from font_rover.designspace import DesignSpaceEntry
+    from font_rover.utils import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -870,7 +870,7 @@ class ProblemsWindow(Adw.Window):
                     # Split by discrete axes and check each sub-space
                     from fontTools.designspaceLib.split import splitInterpolable
 
-                    from ufo_widgets_gtk4.designspace import DesignSpaceEntry
+                    from font_rover.designspace import DesignSpaceEntry
 
                     for discrete_loc, sub_doc in splitInterpolable(entry.doc):
                         # Build set of paths in sub_doc

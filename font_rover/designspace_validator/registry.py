@@ -21,7 +21,7 @@ from .model import ProblemItem
 if TYPE_CHECKING:
     from fontTools.designspaceLib import DesignSpaceDocument
 
-    from ufo_widgets_gtk4.designspace import DesignSpaceEntry
+    from font_rover.designspace import DesignSpaceEntry
 
     from .checkers.base import BaseChecker
 
@@ -482,7 +482,7 @@ class ValidatorRegistry:
 
         from pathlib import Path
 
-        from ufo_widgets_gtk4.designspace import DesignSpaceEntry
+        from font_rover.designspace import DesignSpaceEntry
 
         # Build set of paths in sub_doc
         sub_doc_paths = set()

@@ -16,7 +16,7 @@ from ..model import CheckResult
 if TYPE_CHECKING:
     from fontTools.designspaceLib import DesignSpaceDocument
 
-    from ufo_widgets_gtk4.designspace import DesignSpaceEntry
+    from font_rover.designspace import DesignSpaceEntry
 
 
 class BaseChecker(ABC):

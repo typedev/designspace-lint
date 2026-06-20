@@ -187,7 +187,7 @@ def _apply_glyph_order_sync(
             window._editor_window._mark_dirty()
         wm = getattr(window._editor_window, "_window_manager", None)
         if wm is not None:
-            from ufo_widgets_gtk4.event_config import EVENT_GLYPHS_REORDERED
+            from font_rover.event_config import EVENT_GLYPHS_REORDERED
 
             # Send the unified order from the reference so listeners
             # (grid, etc.) can refresh from a stable source of truth.
@@ -404,7 +404,7 @@ def _apply_group_sort(
             window._editor_window._mark_dirty()
         wm = getattr(window._editor_window, "_window_manager", None)
         if wm is not None:
-            from ufo_widgets_gtk4.event_config import EVENT_GROUPS_CHANGED
+            from font_rover.event_config import EVENT_GROUPS_CHANGED
 
             for path in changed_paths:
                 wm.event_bus.publish(EVENT_GROUPS_CHANGED, str(path))
