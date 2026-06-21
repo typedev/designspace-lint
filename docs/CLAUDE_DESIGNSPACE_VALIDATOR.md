@@ -200,12 +200,12 @@ for item in items:
 
 ### Partial Recheck
 
+The registry runs whole-designspace checks (`check_async` / `check_sync`).
+Re-running only the currently selected problems is a window operation:
+
 ```python
-# Recheck only specific glyphs after fixing
-registry.check_glyphs_async(
-    glyph_names={"A", "B", "C"},
-    on_complete=on_complete,
-)
+# Re-check just the rows selected in the ProblemsWindow
+window.run_check_selected()
 ```
 
 ---
@@ -226,7 +226,7 @@ window = ProblemsWindow(
 window.present()
 
 # Run validation
-window.run_validation()
+window.run_check()
 ```
 
 ### Features
