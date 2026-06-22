@@ -180,8 +180,27 @@ class GlyphOrderChecker(BaseChecker):
         discrete_loc: dict | None,
         discrete_label: str,
     ) -> Iterator[CheckResult]:
-        """Check for glyphs in default glyphOrder but missing from sources."""
+        """Check for glyphs in default glyphOrder but missing from sources.
+
+        Only glyphs that are *physically present* (have an outline / are in
+        ``font.keys()``) in the default source count as a reference worth
+        comparing against. Template entries — names listed in the default's
+        glyphOrder but never drawn — are intentional empty placeholder cells:
+        there is nothing to interpolate toward, so reporting them as "missing"
+        from other masters is pure noise. This mirrors how the Glyphs checker's
+        4.7 (default-glyph-empty) builds its candidate set from physical keys
+        only, keeping the two checks complementary rather than template-noisy.
+        """
         default_order_set = set(manager.get_default_order(discrete_loc))
+
+        # Restrict to glyphs physically drawn in the default source.
+        default_lookup = path_to_source.get(default_source_desc.path) or path_to_source.get(
+            Path(default_source_desc.path).name
+        )
+        if default_lookup is not None:
+            _, default_font_source = default_lookup
+            default_order_set &= set(default_font_source.font.keys())
+
         missing_count = 0
 
         for source_desc in sub_doc.sources:

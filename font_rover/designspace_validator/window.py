@@ -986,6 +986,14 @@ class ProblemsWindow(Adw.Window):
         # Update internal problems list
         self._problems = [self._model.get_item(i) for i in range(self._model.get_n_items())]
 
+        # Notify callback so the editor window's problems badge reflects the
+        # new total. A partial recheck mutates the model in place (the full
+        # run_check() path already notifies in _on_check_complete_internal),
+        # so without this the badge would freeze at its initial count after
+        # fixes are applied.
+        if self._on_check_complete:
+            self._on_check_complete(len(self._problems))
+
         # Calculate fixed count
         fixed_count = old_count - len(new_results)
 
