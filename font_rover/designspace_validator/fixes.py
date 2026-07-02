@@ -407,7 +407,10 @@ def _apply_group_sort(
             from font_rover.event_config import EVENT_GROUPS_CHANGED
 
             for path in changed_paths:
-                wm.event_bus.publish(EVENT_GROUPS_CHANGED, str(path))
+                wm.event_bus.publish(
+                    EVENT_GROUPS_CHANGED,
+                    {"font_path": str(path), "source": "designspace-validator"},
+                )
 
     if fixed_count == 0:
         window._show_info_toast("Nothing to sync — groups already aligned")
