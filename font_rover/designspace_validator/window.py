@@ -199,7 +199,7 @@ class ProblemsWindow(Adw.Window):
         self._filter_popover.connect("filter-changed", self._on_filter_changed)
 
         self._filter_btn = Gtk.MenuButton()
-        self._filter_btn.set_icon_name("instant-mix-symbolic")
+        self._filter_btn.set_icon_name("fr-instant-mix-symbolic")
         self._filter_btn.set_tooltip_text("Filter Problems")
         self._filter_btn.set_popover(self._filter_popover)
         header.pack_start(self._filter_btn)
