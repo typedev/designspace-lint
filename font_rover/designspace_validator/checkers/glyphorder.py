@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Iterator
 
 from fontTools.designspaceLib.split import splitInterpolable
 
+from ...utils.glyph_order import safe_glyph_order
 from ..model import CATEGORY_GLYPHORDER, CheckResult
 from .base import BaseChecker
 
@@ -282,7 +283,7 @@ class GlyphOrderChecker(BaseChecker):
             return
 
         default_idx, default_font_source = default_lookup
-        default_order = list(default_font_source.font.glyphOrder or [])
+        default_order = safe_glyph_order(default_font_source.font)
         if not default_order:
             return
 
@@ -305,7 +306,7 @@ class GlyphOrderChecker(BaseChecker):
                 continue
 
             source_idx, font_source = lookup
-            source_order = list(font_source.font.glyphOrder or [])
+            source_order = safe_glyph_order(font_source.font)
             if not source_order:
                 continue
 

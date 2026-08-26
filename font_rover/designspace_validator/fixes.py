@@ -23,6 +23,8 @@ from typing import TYPE_CHECKING, Callable
 
 from gi.repository import Adw, GLib, Gtk
 
+from font_rover.utils.glyph_order import safe_glyph_order
+
 from .checkers.glyphorder import GLYPHORDER_POSITION_MISMATCH
 from .checkers.kerning import KERNING_GROUP_SORTED_DIFF
 from .model import CATEGORY_GLYPHORDER, CATEGORY_KERNING
@@ -97,7 +99,7 @@ def _show_glyph_order_picker(window: "ProblemsWindow", item: "ProblemItem", mana
 
     for source_idx, fs in sources_in_discrete:
         font = fs.font
-        order = list(font.glyphOrder or [])
+        order = safe_glyph_order(font)
         physical = set(font.keys())
         template_count = sum(1 for n in order if n not in physical)
         counts = f"({len(physical)} physical · {template_count} template · {len(order)} total)"
@@ -192,7 +194,7 @@ def _apply_glyph_order_sync(
             # Send the unified order from the reference so listeners
             # (grid, etc.) can refresh from a stable source of truth.
             ref_source = window._designspace.sources[ref_idx]
-            ref_order = list((ref_source.font.glyphOrder) or [])
+            ref_order = safe_glyph_order(ref_source.font)
             wm.event_bus.publish(EVENT_GLYPHS_REORDERED, {"new_order": ref_order})
 
     if not changed:
