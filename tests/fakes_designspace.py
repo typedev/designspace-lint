@@ -44,6 +44,11 @@ class FakeLayer:
     def keys(self):
         return list(self._glyphs)
 
+    def newGlyph(self, name):
+        glyph = FakeGlyph(name, layer=self, width=0)
+        self._glyphs[name] = glyph
+        return glyph
+
 
 class FakeFont:
     """A default layer plus named extra layers."""
@@ -63,6 +68,9 @@ class FakeFont:
 
     def keys(self):
         return self._default.keys()
+
+    def newGlyph(self, name):
+        return self._default.newGlyph(name)
 
     # --- layers ---
 
