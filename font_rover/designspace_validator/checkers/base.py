@@ -8,10 +8,21 @@ Licensed under the Apache License, Version 2.0
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator
 
 from ..model import CheckResult
+
+
+@lru_cache(maxsize=4096)
+def _resolve_cached(raw: str) -> Path:
+    """Resolve a path string once. A designspace names few distinct paths."""
+    try:
+        return Path(raw).resolve()
+    except OSError:  # pragma: no cover - defensive
+        return Path(raw)
+
 
 if TYPE_CHECKING:
     from fontTools.designspaceLib import DesignSpaceDocument
@@ -63,6 +74,7 @@ class BaseChecker(ABC):
         self._doc = doc
         self._path = path
         self._doc_loaded = False
+        self._label_memo: dict[int, str] = {}
 
     @property
     def entry(self) -> "DesignSpaceEntry | None":
@@ -199,13 +211,14 @@ class BaseChecker(ABC):
 
     @staticmethod
     def _resolve_path(value) -> Path | None:
-        """Resolve a path from a descriptor or a FontSource, if it has one."""
+        """Resolve a path from a descriptor or a FontSource, if it has one.
+
+        Cached: resolving hits the filesystem (``lstat`` per path segment), and
+        a checker asks about the same handful of source paths over and over.
+        """
         if value is None:
             return None
-        try:
-            return Path(str(value)).resolve()
-        except OSError:  # pragma: no cover - defensive
-            return Path(str(value))
+        return _resolve_cached(str(value))
 
     @classmethod
     def _match_source(cls, descriptor, sources):
@@ -263,6 +276,20 @@ class BaseChecker(ABC):
             return f"{name} ({style})" if name else str(style)
         return name or str(getattr(source, "name", "") or "")
 
+    def _label(self, source) -> str:
+        """`_source_label`, remembered per run.
+
+        The label parses a path and asks the master for its layer; in the glyph
+        loop that happens once per glyph per master, for a label that cannot
+        change while the check runs.
+        """
+        key = id(source)
+        label = self._label_memo.get(key)
+        if label is None:
+            label = self._source_label(source)
+            self._label_memo[key] = label
+        return label
+
     @staticmethod
     def _is_layer_source(source) -> bool:
         """Whether this master is a layer inside a UFO rather than a UFO.
@@ -278,17 +305,35 @@ class BaseChecker(ABC):
             return bool(source.master_layer_name())
         return bool(getattr(source, "layerName", None))
 
-    @staticmethod
-    def _own_keys(source) -> set[str]:
+    @classmethod
+    def _own_keys(cls, source) -> set[str]:
         """Glyph names this master actually draws, without a layer fallback."""
         if source is None:
             return set()
         try:
-            if hasattr(source, "get_layer"):
+            if cls._is_layer_source(source):
                 return set(source.get_layer().keys())
             return set(source.font.keys())
         except Exception:  # pragma: no cover - defensive
             return set()
+
+    @classmethod
+    def _own_glyph(cls, source, name: str):
+        """The glyph this master draws, or None -- never another layer's.
+
+        A master that is a whole UFO goes straight to the font: building a
+        layer view for it means asking fontParts for the default layer's name
+        on every glyph of every master, which is most of the cost of a run.
+        """
+        if source is None:
+            return None
+        try:
+            if cls._is_layer_source(source):
+                return source.own_glyph(name)
+            font = source.font
+            return font[name] if name in font else None
+        except Exception:  # pragma: no cover - defensive
+            return None
 
     @staticmethod
     def _format_discrete_location(loc: dict[str, float] | None) -> str:

@@ -99,7 +99,7 @@ class KerningChecker(BaseChecker):
             default_source = sources[0]
 
         default_font = default_source.font
-        default_name = self._source_label(default_source)
+        default_name = self._label(default_source)
 
         yield from self._check_group_overlaps(sources)
 
@@ -134,7 +134,7 @@ class KerningChecker(BaseChecker):
                 continue
 
             source_font = source.font
-            source_name = self._source_label(source)
+            source_name = self._label(source)
 
             # 5,0: No kerning in source. Every pair then resolves to 0 at this
             # master, which is a real effect but a legitimate choice, so it is
@@ -234,7 +234,7 @@ class KerningChecker(BaseChecker):
         it.
         """
         for source in sources:
-            source_name = self._source_label(source)
+            source_name = self._label(source)
             for prefix, side in (("public.kern1.", "first"), ("public.kern2.", "second")):
                 seen: dict[str, str] = {}
                 groups = source.font.groups

@@ -72,13 +72,28 @@ def test_comments_and_whitespace_do_not_count_as_a_difference():
     assert FEATURES_DIFFER_FROM_DEFAULT not in _codes(_entry(KERN_FEA, spaced, spaced))
 
 
-def test_the_report_names_the_offending_master():
+def test_one_result_for_the_designspace_naming_the_offenders():
+    """Not one row per master: the combination is what decides the build."""
     results = [
         r
         for r in FeaturesChecker(entry=_entry(KERN_FEA, KERN_FEA, OTHER_FEA)).check()
         if r.code == FEATURES_DIFFER_FROM_DEFAULT
     ]
 
-    assert results
-    assert all(r.is_structural for r in results)
-    assert any("M2" in r.location for r in results)
+    assert len(results) == 1
+    assert results[0].is_structural is True
+    assert results[0].location == "designspace"
+    assert "M2" in results[0].details
+    assert results[0].raw_data["differing"] == ["M2.ufo (M2)"]
+
+
+def test_a_large_mix_still_produces_a_single_row():
+    entry = _entry(KERN_FEA, *([KERN_FEA] * 40), *([""] * 40))
+
+    results = [
+        r for r in FeaturesChecker(entry=entry).check() if r.code == FEATURES_DIFFER_FROM_DEFAULT
+    ]
+
+    assert len(results) == 1
+    assert "40 match the default" in results[0].description
+    assert "40 are empty" in results[0].description

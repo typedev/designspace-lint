@@ -177,7 +177,7 @@ class GlyphsChecker(BaseChecker):
         """
         yield from self._check_slices(glyph_names=set(glyph_names))
 
-    def _slices(self) -> list[tuple[dict, object, list]]:
+    def _slices(self) -> list[tuple[dict, object, list, list]]:
         """The designspace split into interpolable parts, with their sources.
 
         A discrete axis does not interpolate: each of its values is a separate
@@ -192,18 +192,24 @@ class GlyphsChecker(BaseChecker):
             splits = list(splitInterpolable(self.doc))
         except Exception as exc:  # pragma: no cover - malformed document
             logger.debug(f"splitInterpolable failed: {exc}")
-            return [({}, self.doc, list(entry.sources))]
+            return [({}, self.doc, list(entry.sources), [])]
 
         slices = []
         for discrete_loc, sub_doc in splits:
+            # Descriptor <-> master is matched once per slice, not once per
+            # glyph: the match resolves paths, and doing it inside the glyph
+            # loop cost a filesystem call per glyph per master per master.
+            pairs = []
             sources = []
             for descriptor in sub_doc.sources:
                 matched = self._match_source(descriptor, entry.sources)
-                if matched is not None and matched not in sources:
-                    sources.append(matched)
+                if matched is None or matched in sources:
+                    continue
+                sources.append(matched)
+                pairs.append((descriptor, matched))
             if sources:
-                slices.append((discrete_loc, sub_doc, sources))
-        return slices or [({}, self.doc, list(entry.sources))]
+                slices.append((discrete_loc, sub_doc, sources, pairs))
+        return slices or [({}, self.doc, list(entry.sources), [])]
 
     def _check_slices(self, glyph_names: set[str] | None) -> Iterator[CheckResult]:
         """Run the per-glyph rules over every interpolable slice."""
@@ -215,7 +221,7 @@ class GlyphsChecker(BaseChecker):
         if len(entry.sources) < 2:
             return  # Nothing to compare
 
-        for _discrete_loc, sub_doc, sources in self._slices():
+        for _discrete_loc, sub_doc, sources, pairs in self._slices():
             if len(sources) < 2:
                 continue
 
@@ -239,8 +245,7 @@ class GlyphsChecker(BaseChecker):
                 if default_source not in present_in:
                     yield self._missing_in_default_result(glyph_name, present_in, default_source)
                     continue
-                yield from self._check_axis_coverage(glyph_name, sub_doc, sources, present_in)
-                yield from self._check_empty_glyphs(glyph_name, present_in)
+                yield from self._check_axis_coverage(glyph_name, sub_doc, pairs, present_in)
                 glyphs_to_check.append(glyph_name)
 
             # Check glyphs sequentially (ThreadPoolExecutor doesn't help due to GIL)
@@ -264,8 +269,8 @@ class GlyphsChecker(BaseChecker):
         a glyph the default does not have is simply absent from the compiled
         font -- silently, however many other masters draw it.
         """
-        present_names = [self._source_label(s) for s in present_in]
-        missing_name = self._source_label(default_source)
+        present_names = [self._label(s) for s in present_in]
+        missing_name = self._label(default_source)
 
         if len(present_names) <= 2:
             location = f"exists in {', '.join(n.replace('.ufo', '') for n in present_names)}"
@@ -291,9 +296,7 @@ class GlyphsChecker(BaseChecker):
             },
         )
 
-    def _check_axis_coverage(
-        self, glyph_name, sub_doc, sources, present_in
-    ) -> Iterator[CheckResult]:
+    def _check_axis_coverage(self, glyph_name, sub_doc, pairs, present_in) -> Iterator[CheckResult]:
         """4.11: the glyph does not reach as far along an axis as the space does.
 
         Missing from a master in the middle is fine -- varLib interpolates the
@@ -304,20 +307,17 @@ class GlyphsChecker(BaseChecker):
         """
         from ..axis_span import axis_span_gaps
 
-        descriptors = {id(source): None for source in sources}
-        all_descs = []
-        covering_descs = []
-        for descriptor in sub_doc.sources:
-            matched = self._match_source(descriptor, sources)
-            if matched is None or id(matched) not in descriptors:
-                continue
-            all_descs.append(descriptor)
-            if matched in present_in:
-                covering_descs.append(descriptor)
+        present_ids = {id(source) for source in present_in}
+        all_descs = [descriptor for descriptor, _source in pairs]
+        covering_descs = [d for d, source in pairs if id(source) in present_ids]
+        if len(covering_descs) == len(all_descs):
+            return  # every master draws it; nothing to span-check
 
         for gap in axis_span_gaps(sub_doc, all_descs, covering_descs):
             end = "maximum" if gap.side == "maximum" else "minimum"
-            missing_in = [self._source_label(s) for s in sources if s not in present_in]
+            missing_in = [
+                self._label(source) for _d, source in pairs if id(source) not in present_ids
+            ]
             yield self._make_result(
                 code=GLYPH_AXIS_SPAN_GAP,
                 description=(
@@ -344,45 +344,38 @@ class GlyphsChecker(BaseChecker):
                 },
             )
 
-    def _check_empty_glyphs(self, glyph_name, present_in) -> Iterator[CheckResult]:
+    def _empty_glyph_results(self, glyph_name, drawn, empty) -> Iterator[CheckResult]:
         """4.12: the glyph is drawn in some masters and left empty in others.
 
         A glyph empty everywhere is an ordinary spacing glyph. One that is
         empty next to masters that draw it cannot interpolate with them: it has
         no points to match, so the shape collapses.
-        """
-        drawn = []
-        empty = []
-        for source in present_in:
-            glyph = source.own_glyph(glyph_name)
-            if glyph is None:
-                continue
-            if len(glyph) == 0 and not glyph.components:
-                empty.append(source)
-            else:
-                drawn.append(source)
 
+        Takes the two lists from the caller's own pass over the sources --
+        fetching every glyph a second time just to look at it is the kind of
+        thing that makes an 84-master designspace crawl.
+        """
         if not empty or not drawn:
             return
 
-        empty_names = [self._source_label(s) for s in empty]
+        empty_names = [self._label(s) for s in empty]
         for source in empty:
             yield self._make_result(
                 code=GLYPH_EMPTY_IN_SOURCE,
                 description=f"empty here, drawn in {len(drawn)} sources",
                 glyph_name=glyph_name,
-                location=self._source_label(source).replace(".ufo", ""),
+                location=self._label(source).replace(".ufo", ""),
                 is_structural=False,
                 details=(
                     f"Glyph '{glyph_name}' has no contours and no components in "
-                    f"{self._source_label(source)}, but is drawn in "
-                    f"{', '.join(self._source_label(s) for s in drawn[:3])}"
+                    f"{self._label(source)}, but is drawn in "
+                    f"{', '.join(self._label(s) for s in drawn[:3])}"
                 ),
                 problem_type=GlyphProblemType.EMPTY_GLYPH,
                 raw_data={
                     "glyphName": glyph_name,
                     "locationType": "binary",
-                    "presentIn": [self._source_label(s) for s in drawn],
+                    "presentIn": [self._label(s) for s in drawn],
                     "missingIn": empty_names,
                 },
             )
@@ -417,19 +410,26 @@ class GlyphsChecker(BaseChecker):
         contour_stats: dict[tuple, list[dict]] = {}
         contour_directions: list[tuple[str, tuple]] = []  # (source_name, directions)
         all_source_names: list[str] = []  # Track all sources that have this glyph
+        drawn_sources: list = []  # 4.12: sources with an outline ...
+        empty_sources: list = []  # ... and sources that leave the glyph empty
 
         num_sources = 0
 
         for source in sources:
             # A layer master draws from its own layer; reading the UFO's
             # default layer would compare one master with another's outline.
-            glyph = source.own_glyph(glyph_name)
+            glyph = self._own_glyph(source, glyph_name)
             if glyph is None:
                 continue
 
             num_sources += 1
-            source_name = self._source_label(source)
+            source_name = self._label(source)
             all_source_names.append(source_name)
+
+            if len(glyph) == 0 and not glyph.components:
+                empty_sources.append(source)
+            else:
+                drawn_sources.append(source)
 
             # Get digest using DigestPointStructurePen
             pen = DigestPointStructurePen()
@@ -758,6 +758,8 @@ class GlyphsChecker(BaseChecker):
                     },
                 )
             )
+
+        results.extend(self._empty_glyph_results(glyph_name, drawn_sources, empty_sources))
 
         return results
 

@@ -73,7 +73,7 @@ class FeaturesChecker(BaseChecker):
 
         for source in self._ufo_sources():
             font = source.font
-            source_name = self._source_label(source)
+            source_name = self._label(source)
 
             # Get features text
             features = getattr(font, "features", None)
@@ -201,26 +201,50 @@ class FeaturesChecker(BaseChecker):
         if all_same or all_empty:
             return
 
-        default_name = self._source_label(default_source)
-        for source in others:
-            source_tokens = other_tokens[id(source)]
-            if source_tokens == default_tokens:
-                state = "same as the default's"
-            elif not source_tokens:
-                state = "empty"
-            else:
-                state = "different from the default's"
-            yield self._make_result(
-                code=FEATURES_DIFFER_FROM_DEFAULT,
-                description=f"features.fea is {state}",
-                location=self._source_label(source),
-                is_structural=True,
-                details=(
-                    f"ufo2ft builds one variable feature file from {default_name} only when "
-                    f"every other master's features.fea matches it or all of them are empty. "
-                    f"Here they are mixed, so features are compiled per master instead and "
-                    f"varLib must merge them -- which fails on a differing glyph order or a "
-                    f"differing set of lookups."
-                ),
-                raw_data={"font": self._source_label(source), "state": state},
-            )
+        # One result for the designspace, not one per master: the masters are
+        # not individually wrong, their *combination* is what decides how the
+        # build compiles features. Eighty-three rows saying the same sentence
+        # would bury every other problem in the list.
+        default_name = self._label(default_source)
+        matching = [s for s in others if other_tokens[id(s)] == default_tokens]
+        empty = [s for s in others if not other_tokens[id(s)]]
+        differing = [s for s in others if s not in matching and s not in empty]
+
+        parts = []
+        if matching:
+            parts.append(f"{len(matching)} match the default")
+        if empty:
+            parts.append(f"{len(empty)} are empty")
+        if differing:
+            parts.append(f"{len(differing)} differ")
+
+        def names(sources):
+            labels = [self._label(s) for s in sources[:3]]
+            more = len(sources) - len(labels)
+            return ", ".join(labels) + (f" (+{more} more)" if more > 0 else "")
+
+        detail_lines = [
+            f"ufo2ft builds one variable feature file from {default_name} only when every "
+            f"other master's features.fea matches it or all of them are empty. Here "
+            f"{' and '.join(parts)}, so features are compiled per master instead and varLib "
+            f"must merge them -- which fails on a differing glyph order "
+            f"(InconsistentGlyphOrder) or a differing set of lookups (ShouldBeConstant)."
+        ]
+        if empty:
+            detail_lines.append(f"Empty: {names(empty)}")
+        if differing:
+            detail_lines.append(f"Different: {names(differing)}")
+
+        yield self._make_result(
+            code=FEATURES_DIFFER_FROM_DEFAULT,
+            description=f"features.fea is mixed across masters: {', '.join(parts)}",
+            location="designspace",
+            is_structural=True,
+            details="\n".join(detail_lines),
+            raw_data={
+                "default": default_name,
+                "matching": [self._label(s) for s in matching],
+                "empty": [self._label(s) for s in empty],
+                "differing": [self._label(s) for s in differing],
+            },
+        )
