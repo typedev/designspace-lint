@@ -11,17 +11,13 @@ axis silently reverts to the default master's shape, and a glyph absent from
 the default master is dropped from the compiled font altogether.
 """
 
-import pytest
-
-pytest.importorskip("gi")  # the result model is a GObject; no display needed
-
-from designspace_lint.checkers.glyphs import (  # noqa: E402
+from designspace_lint.checkers.glyphs import (
     DEFAULT_GLYPH_EMPTY,
     GLYPH_AXIS_SPAN_GAP,
     GLYPH_EMPTY_IN_SOURCE,
     GlyphsChecker,
 )
-from tests.fakes_designspace import FakeGlyph, build_entry  # noqa: E402
+from fakes import FakeGlyph, build_designspace
 
 
 def _drawn(name="A", size=100, width=500):
@@ -30,11 +26,11 @@ def _drawn(name="A", size=100, width=500):
 
 def _weight_entry(glyph_sets, locations=(0, 50, 100)):
     """One continuous axis, one master per glyph set."""
-    return build_entry(
+    return build_designspace(
         axes=[{"name": "Weight", "tag": "wght", "minimum": 0, "default": 0, "maximum": 100}],
         sources=[
             {"name": f"M{i}", "location": {"Weight": loc}, "glyphs": glyphs}
-            for i, (loc, glyphs) in enumerate(zip(locations, glyph_sets))
+            for i, (loc, glyphs) in enumerate(zip(locations, glyph_sets, strict=False))
         ],
     )
 
@@ -133,7 +129,7 @@ def test_sparse_in_the_name_no_longer_changes_anything():
     plain = _weight_entry(
         [{"A": _drawn(), "B": _drawn("B")}, {"A": _drawn(size=150)}, {"A": _drawn(size=200)}]
     )
-    named = build_entry(
+    named = build_designspace(
         axes=[{"name": "Weight", "tag": "wght", "minimum": 0, "default": 0, "maximum": 100}],
         sources=[
             {
@@ -162,7 +158,7 @@ def test_sparse_in_the_name_no_longer_changes_anything():
 
 def test_each_discrete_slice_is_judged_on_its_own():
     """An upright master cannot cover the italic slice's axis end."""
-    entry = build_entry(
+    entry = build_designspace(
         axes=[
             {"name": "Weight", "tag": "wght", "minimum": 0, "default": 0, "maximum": 100},
             {"name": "Italic", "tag": "ital", "values": [0, 1], "default": 0},
@@ -199,7 +195,7 @@ def test_each_discrete_slice_is_judged_on_its_own():
 
 def test_layer_masters_are_compared_on_their_own_layers():
     """Two masters in one UFO: the outline must come from each one's layer."""
-    entry = build_entry(
+    entry = build_designspace(
         axes=[{"name": "Width", "tag": "wdth", "minimum": 0, "default": 0, "maximum": 100}],
         sources=[
             {

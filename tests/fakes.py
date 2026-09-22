@@ -15,7 +15,7 @@ would pass tests that a real font fails.
 
 from pathlib import Path
 
-from font_rover.designspace import DesignSpaceEntry, FontSource
+from designspace_lint.loader import DesignSpace, Source
 
 
 class FakePoint:
@@ -231,7 +231,7 @@ def build_doc(axes, sources, path="/tmp/fake/test.designspace"):
     return doc
 
 
-def build_entry(axes, sources, ds_path="/tmp/fake/test.designspace"):
+def build_designspace(axes, sources, ds_path="/tmp/fake/test.designspace"):
     """Fake fonts + FontSources + a real document, wired together.
 
     Each source spec takes `name`, `location`, `glyphs` (names or
@@ -257,7 +257,7 @@ def build_entry(axes, sources, ds_path="/tmp/fake/test.designspace"):
                 features=spec.get("features", ""),
             )
         font_sources.append(
-            FontSource(
+            Source(
                 font=fonts[key],
                 path=path,
                 name=spec["name"],
@@ -276,49 +276,4 @@ def build_entry(axes, sources, ds_path="/tmp/fake/test.designspace"):
         )
 
     doc = build_doc(axes, source_specs, path=ds_path)
-    return DesignSpaceEntry(path=Path(ds_path), doc=doc, sources=font_sources)
-
-
-def plain_designspace():
-    """Three ordinary masters, one UFO each. 'B' is missing from Bold."""
-    sources = []
-    for idx, (style, glyphs) in enumerate(
-        [("Light", ["A", "B"]), ("Regular", ["A", "B"]), ("Bold", ["A"])]
-    ):
-        path = Path(f"/tmp/fake/{style}.ufo")
-        sources.append(
-            FontSource(
-                font=FakeFont(path, glyphs),
-                path=path,
-                name=style,
-                style_name=style,
-                location={"wght": 100 * (idx + 1)},
-            )
-        )
-    return DesignSpaceEntry(path=Path("/tmp/fake/test.designspace"), doc=None, sources=sources)
-
-
-def layer_designspace():
-    """Two masters that are LAYERS of one UFO — they share a path.
-
-    The 'Wide' layer is sparse: it does not draw 'B'.
-    """
-    path = Path("/tmp/fake/shared.ufo")
-    font = FakeFont(path, ["A", "B"], layers={"Wide": ["A"]})
-    sources = [
-        FontSource(font=font, path=path, name="Narrow", style_name="Narrow"),
-        FontSource(font=font, path=path, name="Wide", style_name="Wide", layer_name="Wide"),
-    ]
-    return DesignSpaceEntry(path=Path("/tmp/fake/shared.designspace"), doc=None, sources=sources)
-
-
-def entry_with_plain_layer():
-    """One master whose UFO also has an ordinary, non-master layer.
-
-    'sketch' draws only 'A', so it is sparse for 'B' — the case where a layer
-    switch must refuse rather than hand back the default layer's outline.
-    """
-    path = Path("/tmp/fake/one.ufo")
-    font = FakeFont(path, ["A", "B"], layers={"sketch": ["A"]})
-    source = FontSource(font=font, path=path, name="Regular", style_name="Regular")
-    return DesignSpaceEntry(path=Path("/tmp/fake/one.designspace"), doc=None, sources=[source])
+    return DesignSpace(path=Path(ds_path), doc=doc, sources=font_sources)

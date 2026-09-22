@@ -265,8 +265,11 @@ class Linter:
             try:
                 if phase_id == "glyphs" and on_progress:
                     # Special handling for glyphs - create checker with progress callback
-                    def glyph_progress(checked, total):
-                        current = current_work + checked
+                    # `done_so_far` is bound now, not when the callback runs:
+                    # the loop keeps moving current_work, and a late-bound
+                    # closure would report progress from the wrong phase.
+                    def glyph_progress(checked, total, done_so_far=current_work):
+                        current = done_so_far + checked
                         msg = f"Checking glyphs ({checked}/{total})"
                         on_progress(current, total_work, msg)
 

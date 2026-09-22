@@ -11,20 +11,16 @@ is fine -- that is what a sparse master is -- so the comparison runs on the
 names the two masters share.
 """
 
-import pytest
-
-pytest.importorskip("gi")
-
-from designspace_lint.checkers.glyphorder import (  # noqa: E402
+from designspace_lint.checkers.glyphorder import (
     GLYPHORDER_MISSING_GLYPH,
     GLYPHORDER_POSITION_MISMATCH,
     GlyphOrderChecker,
 )
-from tests.fakes_designspace import build_entry  # noqa: E402
+from fakes import build_designspace
 
 
 def _entry(source_specs):
-    return build_entry(
+    return build_designspace(
         axes=[{"name": "Weight", "tag": "wght", "minimum": 0, "default": 0, "maximum": 100}],
         sources=source_specs,
     )
@@ -85,7 +81,7 @@ def test_sparse_in_the_name_no_longer_silences_a_reordered_master():
 
 
 def test_layer_masters_have_no_glyph_order_of_their_own():
-    entry = build_entry(
+    entry = build_designspace(
         axes=[{"name": "Width", "tag": "wdth", "minimum": 0, "default": 0, "maximum": 100}],
         sources=[
             {

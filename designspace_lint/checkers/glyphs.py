@@ -568,7 +568,7 @@ class GlyphsChecker(BaseChecker):
 
             # Build details about which sources have which pattern
             pattern_info = []
-            for pat, sources in patterns.items():
+            for _pattern, sources in patterns.items():
                 if len(sources) <= 3:
                     pattern_info.append(f"{len(sources)} sources: {', '.join(sources)}")
                 else:
@@ -609,8 +609,8 @@ class GlyphsChecker(BaseChecker):
                 lambda: defaultdict(list)
             )
 
-            for pat, sources in patterns.items():
-                stats = contour_stats.get(pat, [])
+            for pattern, sources in patterns.items():
+                stats = contour_stats.get(pattern, [])
                 for ci, cs in enumerate(stats):
                     on_curves_by_contour[ci][cs["on_curves"]].extend(sources)
                     off_curves_by_contour[ci][cs["off_curves"]].extend(sources)

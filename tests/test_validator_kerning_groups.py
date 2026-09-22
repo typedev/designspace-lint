@@ -11,18 +11,14 @@ reported is what the build swallows silently -- a master with no groups at all
 glyph claimed by two groups of the same side (the second group is discarded).
 """
 
-import pytest
-
-pytest.importorskip("gi")
-
-from designspace_lint.checkers.kerning import (  # noqa: E402
+from designspace_lint.checkers.kerning import (
     GLYPH_IN_TWO_KERN_GROUPS,
     KERNING_GROUP_DIFFERS,
     NO_KERNING_GROUPS_SOURCE,
     NO_KERNING_IN_SOURCE,
     KerningChecker,
 )
-from tests.fakes_designspace import build_entry  # noqa: E402
+from fakes import build_designspace
 
 GROUPS = {"public.kern1.A": ["A", "Agrave"], "public.kern2.V": ["V", "W"]}
 KERNING = {("public.kern1.A", "public.kern2.V"): -50}
@@ -36,7 +32,7 @@ def _entry(second_source, first_source=None):
         "groups": GROUPS,
         "kerning": KERNING,
     }
-    return build_entry(
+    return build_designspace(
         axes=[{"name": "Weight", "tag": "wght", "minimum": 0, "default": 0, "maximum": 100}],
         sources=[first, second_source],
     )
@@ -159,7 +155,7 @@ def test_the_same_glyph_on_both_sides_is_fine():
 
 def test_layer_masters_are_skipped():
     """A layer has no kerning of its own, and ufo2ft ignores it."""
-    entry = build_entry(
+    entry = build_designspace(
         axes=[{"name": "Width", "tag": "wdth", "minimum": 0, "default": 0, "maximum": 100}],
         sources=[
             {

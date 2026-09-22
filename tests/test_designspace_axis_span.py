@@ -11,7 +11,7 @@ default master's shape past its own last master.
 """
 
 from designspace_lint.axis_span import axis_span_gaps, continuous_axes
-from tests.fakes_designspace import build_doc
+from fakes import build_doc
 
 
 def _doc(locations, axes=None):

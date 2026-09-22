@@ -13,21 +13,20 @@ what finally fails, pointing at something else.
 
 import pytest
 
-pytest.importorskip("gi")
 pytest.importorskip("ufo2ft")
 
-from designspace_lint.checkers.features import (  # noqa: E402
+from designspace_lint.checkers.features import (
     FEATURES_DIFFER_FROM_DEFAULT,
     FeaturesChecker,
 )
-from tests.fakes_designspace import build_entry  # noqa: E402
+from fakes import build_designspace
 
 KERN_FEA = "feature kern {\n    pos A V -40;\n} kern;\n"
 OTHER_FEA = "feature kern {\n    pos A V -90;\n} kern;\n"
 
 
 def _entry(*feature_texts):
-    return build_entry(
+    return build_designspace(
         axes=[{"name": "Weight", "tag": "wght", "minimum": 0, "default": 0, "maximum": 100}],
         sources=[
             {

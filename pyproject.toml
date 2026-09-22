@@ -1,0 +1,79 @@
+[project]
+name = "designspace-lint"
+version = "0.1.0"
+description = "Tell a designspace what it will do when it is built: silent glyph, kerning, feature and glyph-order problems in UFO masters."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Alexander Lubovenko", email = "alextypedev@gmail.com" }]
+keywords = [
+    "fonts",
+    "designspace",
+    "ufo",
+    "variable-fonts",
+    "interpolation",
+    "lint",
+    "typography",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Fonts",
+]
+dependencies = [
+    "fontTools>=4.40.0",
+    "fontParts>=0.12.0",
+    "fontPens>=0.2.4",
+]
+
+[project.optional-dependencies]
+# The features check compares files the way ufo2ft does, using its own
+# tokenizer. Without it, that one check is skipped and the rest still run.
+features = ["ufo2ft>=3.0.0"]
+
+[project.scripts]
+designspace-lint = "designspace_lint.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/typedev/designspace-lint"
+Repository = "https://github.com/typedev/designspace-lint"
+Issues = "https://github.com/typedev/designspace-lint/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["designspace_lint"]
+
+[tool.hatch.build.targets.sdist]
+include = ["designspace_lint", "tests", "README.md", "LICENSE", "NOTICE", "CHANGELOG.md"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+python_files = ["test_*.py"]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0",
+    "ruff==0.14.6",
+    "ufo2ft>=3.0.0",
+]
