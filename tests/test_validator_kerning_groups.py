@@ -19,6 +19,7 @@ from font_rover.designspace_validator.checkers.kerning import (  # noqa: E402
     GLYPH_IN_TWO_KERN_GROUPS,
     KERNING_GROUP_DIFFERS,
     NO_KERNING_GROUPS_SOURCE,
+    NO_KERNING_IN_SOURCE,
     KerningChecker,
 )
 from tests.fakes_designspace import build_entry  # noqa: E402
@@ -45,7 +46,7 @@ def _codes(entry):
     return [r.code for r in KerningChecker(entry=entry).check()]
 
 
-def test_master_without_kern_groups_is_reported():
+def test_master_with_pairs_but_without_kern_groups_is_reported():
     entry = _entry(
         {
             "name": "Bold",
@@ -56,6 +57,40 @@ def test_master_without_kern_groups_is_reported():
     )
 
     assert NO_KERNING_GROUPS_SOURCE in _codes(entry)
+
+
+def test_master_with_no_kerning_at_all_is_reported_once():
+    """One row, not two: no pairs is the cause, no groups only its symptom."""
+    entry = _entry(
+        {
+            "name": "Bold",
+            "location": {"Weight": 100},
+            "glyphs": ["A", "Agrave", "V", "W"],
+        }
+    )
+
+    results = [r for r in KerningChecker(entry=entry).check() if r.location.startswith("Bold")]
+
+    assert [r.code for r in results] == [NO_KERNING_IN_SOURCE]
+    assert results[0].is_structural is True
+    assert "layer" in results[0].details
+
+
+def test_groups_without_pairs_do_not_excuse_the_master():
+    """Verified by building a VF: the value lookup still lands on 0."""
+    entry = _entry(
+        {
+            "name": "Bold",
+            "location": {"Weight": 100},
+            "glyphs": ["A", "Agrave", "V", "W"],
+            "groups": GROUPS,  # groups but no pairs
+        }
+    )
+
+    codes = _codes(entry)
+
+    assert NO_KERNING_IN_SOURCE in codes
+    assert NO_KERNING_GROUPS_SOURCE not in codes
 
 
 def test_different_pair_sets_are_not_reported():

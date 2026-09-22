@@ -136,24 +136,43 @@ class KerningChecker(BaseChecker):
             source_font = source.font
             source_name = self._label(source)
 
-            # 5,0: No kerning in source. Every pair then resolves to 0 at this
-            # master, which is a real effect but a legitimate choice, so it is
-            # reported for information rather than as a problem.
-            if len(source_font.kerning.keys()) == 0:
-                yield self._make_result(
-                    code=NO_KERNING_IN_SOURCE,
-                    description="no kerning in source",
-                    location=source_name,
-                    is_structural=False,
-                    raw_data={"font": source_name},
-                )
-
-            # 5,6: No kerning groups in source
             source_groups = {
                 name: list(members)
                 for name, members in source_font.groups.items()
                 if name.startswith("public.kern")
             }
+            has_kerning = len(source_font.kerning.keys()) > 0
+
+            # 5,0: no kerning at all in a full UFO master, while the default
+            # has some. ufo2ft asks THIS master for every pair the designspace
+            # kerns, finds nothing and uses 0, so the kerning of the whole
+            # family sags toward zero around this master's location -- in the
+            # built font, silently. Measured on a two-master test: with -50 in
+            # the default and nothing here, the midpoint gets -25 and this
+            # master 0. Carrying the groups without the pairs does not help;
+            # the value lookup goes to this master's own kerning either way.
+            # A master meant to correct outlines only belongs in a layer of a
+            # full UFO, which ufo2ft skips for kerning.
+            if not has_kerning and len(default_font.kerning.keys()) > 0:
+                yield self._make_result(
+                    code=NO_KERNING_IN_SOURCE,
+                    description="no kerning: the family's kerning sags to 0 here",
+                    location=source_name,
+                    is_structural=True,
+                    details=(
+                        f"{source_name} has no kerning pairs"
+                        + ("" if source_groups else " and no kerning groups")
+                        + f", while the default has {len(default_font.kerning.keys())} pairs. "
+                        f"Every pair resolves to 0 at this master and interpolates toward zero "
+                        f"around it. Give it the kerning, or make it a layer of a full UFO -- "
+                        f"ufo2ft skips layer sources for kerning."
+                    ),
+                    raw_data={"font": source_name, "hasGroups": bool(source_groups)},
+                )
+                continue
+
+            # 5,6: groups missing but pairs present -- the class pairs among
+            # them cannot resolve, so those specific pairs go to 0.
             if len(source_groups) == 0:
                 if default_groups:
                     yield self._make_result(
@@ -163,9 +182,8 @@ class KerningChecker(BaseChecker):
                         is_structural=True,
                         details=(
                             f"{source_name} defines no public.kern1/kern2 groups while the "
-                            f"default has {len(default_groups)}. ufo2ft looks a class pair up "
-                            f"in this master's own kerning, finds nothing and uses 0, so every "
-                            f"class pair interpolates toward zero here."
+                            f"default has {len(default_groups)}. Its flat pairs still apply, "
+                            f"but every class pair resolves to 0 at this master."
                         ),
                         raw_data={"font": source_name},
                     )
