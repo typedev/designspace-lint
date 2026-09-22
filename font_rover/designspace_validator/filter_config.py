@@ -106,7 +106,8 @@ FILTER_GROUPS: dict[int, list[tuple[str, str, list[int] | None, str]]] = {
         ("components", "Components", [1], "Different components in glyph"),
         ("anchors", "Anchors", [2], "Different anchors across sources"),
         ("unicodes", "Unicodes", [10], "Different unicode values"),
-        ("empty", "Empty/Missing", [7], "Glyph missing in default source"),
+        ("empty", "Empty/Missing", [7, 12], "Glyph missing in default, or empty in one source"),
+        ("coverage", "Axis Coverage", [11], "Glyph does not reach one end of an axis"),
     ],
     # Category 5: Kerning
     CATEGORY_KERNING: [
@@ -114,8 +115,8 @@ FILTER_GROUPS: dict[int, list[tuple[str, str, list[int] | None, str]]] = {
         (
             "groups",
             "Kerning Groups",
-            [2, 3, 5, 6, 7],
-            "Group differences, missing groups, sort order",
+            [2, 3, 5, 6, 7, 8],
+            "Group differences, missing groups, sort order, a glyph in two groups",
         ),
     ],
     # Category 6: Font Info
@@ -133,8 +134,8 @@ FILTER_GROUPS: dict[int, list[tuple[str, str, list[int] | None, str]]] = {
     # Category 9: GlyphOrder
     CATEGORY_GLYPHORDER: [
         ("extra", "Extra Glyphs", [0], "Glyphs in source but not in default glyphOrder"),
-        ("missing", "Missing Glyphs", [1], "Glyphs in glyphOrder but missing from source"),
         ("naming", "Naming Mismatch", [2], "Different name for same Unicode"),
+        ("position", "Glyph Order", [3], "Glyphs not in the default's order (breaks the merge)"),
     ],
 }
 

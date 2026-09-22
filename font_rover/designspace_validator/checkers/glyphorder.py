@@ -39,21 +39,32 @@ GLYPHORDER_POSITION_MISMATCH = 3
 
 
 def _format_source_name(font_source: "FontSource") -> str:
-    """Format source name for display."""
+    """Format source name for display.
+
+    Delegates to the shared labeller so a layer master is named by its layer
+    rather than by the UFO it shares with its siblings.
+    """
     if font_source is None:
         return "unknown"
+    return BaseChecker._source_label(font_source) or "unknown"
 
-    name = font_source.path.name if font_source.path else "unknown"
 
-    style = getattr(font_source, "style_name", None)
-    if style:
-        name = f"{name} ({style})"
-    elif hasattr(font_source, "get_location_label"):
-        location = font_source.get_location_label()
-        if location and location != getattr(font_source, "name", ""):
-            name = f"{name} ({location})"
+class _SourceLookup:
+    """Finds the loaded master a designspace source descriptor stands for.
 
-    return name
+    Keeps the master's index in the entry, which GlyphOrderManager works in
+    terms of.
+    """
+
+    def __init__(self, sources):
+        self._sources = list(sources)
+        self._index = {id(source): idx for idx, source in enumerate(self._sources)}
+
+    def for_descriptor(self, descriptor):
+        source = BaseChecker._match_source(descriptor, self._sources)
+        if source is None:
+            return None
+        return self._index[id(source)], source
 
 
 class GlyphOrderChecker(BaseChecker):
@@ -81,11 +92,10 @@ class GlyphOrderChecker(BaseChecker):
             logger.warning(f"Failed to create GlyphOrderManager: {e}")
             return
 
-        # Build path -> FontSource lookup
-        path_to_source: dict[str, tuple[int, "FontSource"]] = {}
-        for idx, source in enumerate(entry.sources):
-            path_to_source[str(source.path)] = (idx, source)
-            path_to_source[source.path.name] = (idx, source)
+        # Descriptor -> (index, FontSource). Keying this by path alone made
+        # every layer of a shared UFO answer to the same key; a master is a
+        # path *and* a layer.
+        path_to_source = _SourceLookup(entry.sources)
 
         # Use splitInterpolable to get proper sub-documents per discrete location
         for discrete_loc, sub_doc in splitInterpolable(entry.doc):
@@ -101,15 +111,10 @@ class GlyphOrderChecker(BaseChecker):
                 manager, sub_doc, path_to_source, discrete_loc, discrete_label
             )
 
-            # --- Check 9.1: Missing glyphs ---
-            yield from self._check_missing_glyphs(
-                manager,
-                sub_doc,
-                path_to_source,
-                default_source_desc,
-                discrete_loc,
-                discrete_label,
-            )
+            # 9.1 (missing glyphs) is deliberately not run here any more: which
+            # masters a glyph may skip is a property of the axes, and it is
+            # decided in the glyphs checker (4.7 / 4.11). Reporting it twice,
+            # once per master, buried the cases that actually break a build.
 
             # --- Check 9.3: Position mismatch ---
             yield from self._check_position_consistency(
@@ -137,9 +142,7 @@ class GlyphOrderChecker(BaseChecker):
             for source_desc in sub_doc.sources:
                 if source_desc.path is None:
                     continue
-                lookup = path_to_source.get(source_desc.path) or path_to_source.get(
-                    Path(source_desc.path).name
-                )
+                lookup = path_to_source.for_descriptor(source_desc)
                 if lookup is None:
                     continue
                 idx, font_source = lookup
@@ -172,92 +175,6 @@ class GlyphOrderChecker(BaseChecker):
             + (f" [{discrete_label}]" if discrete_label else "")
         )
 
-    def _check_missing_glyphs(
-        self,
-        manager,
-        sub_doc,
-        path_to_source: dict,
-        default_source_desc,
-        discrete_loc: dict | None,
-        discrete_label: str,
-    ) -> Iterator[CheckResult]:
-        """Check for glyphs in default glyphOrder but missing from sources.
-
-        Only glyphs that are *physically present* (have an outline / are in
-        ``font.keys()``) in the default source count as a reference worth
-        comparing against. Template entries — names listed in the default's
-        glyphOrder but never drawn — are intentional empty placeholder cells:
-        there is nothing to interpolate toward, so reporting them as "missing"
-        from other masters is pure noise. This mirrors how the Glyphs checker's
-        4.7 (default-glyph-empty) builds its candidate set from physical keys
-        only, keeping the two checks complementary rather than template-noisy.
-        """
-        default_order_set = set(manager.get_default_order(discrete_loc))
-
-        # Restrict to glyphs physically drawn in the default source.
-        default_lookup = path_to_source.get(default_source_desc.path) or path_to_source.get(
-            Path(default_source_desc.path).name
-        )
-        if default_lookup is not None:
-            _, default_font_source = default_lookup
-            default_order_set &= set(default_font_source.font.keys())
-
-        missing_count = 0
-
-        for source_desc in sub_doc.sources:
-            # Skip the default source
-            if source_desc == default_source_desc:
-                continue
-
-            if source_desc.path is None:
-                continue
-
-            # Sparse masters carry only a small set of correction glyphs and
-            # are expected to be incomplete; missing-glyph reports for them
-            # are pure noise.
-            if self._is_sparse_source(source_desc):
-                continue
-
-            # Find matching FontSource
-            lookup = path_to_source.get(source_desc.path) or path_to_source.get(
-                Path(source_desc.path).name
-            )
-            if lookup is None:
-                continue
-
-            idx, font_source = lookup
-            source_name = _format_source_name(font_source)
-            source_glyphs = set(font_source.font.keys())
-
-            # Find glyphs in default order that are missing from this source
-            missing_glyphs = default_order_set - source_glyphs
-
-            for glyph_name in missing_glyphs:
-                location = source_name
-                if discrete_label:
-                    location = f"{location} [{discrete_label}]"
-
-                yield self._make_result(
-                    code=GLYPHORDER_MISSING_GLYPH,
-                    description=f"Glyph '{glyph_name}' missing from source",
-                    location=location,
-                    glyph_name=glyph_name,
-                    details=f"In default glyphOrder but not in {source_name}",
-                    is_structural=False,
-                    raw_data={
-                        "glyphName": glyph_name,
-                        "sourceIndex": idx,
-                        "sourceName": source_name,
-                        "discreteLocation": discrete_loc,
-                    },
-                )
-                missing_count += 1
-
-        logger.info(
-            f"GlyphOrder check: found {missing_count} missing glyphs"
-            + (f" [{discrete_label}]" if discrete_label else "")
-        )
-
     def _check_position_consistency(
         self,
         sub_doc,
@@ -268,17 +185,20 @@ class GlyphOrderChecker(BaseChecker):
     ) -> Iterator[CheckResult]:
         """Detect glyphOrder position mismatches between default and other sources.
 
-        Compares each non-default source's glyphOrder against the default's.
-        Both lists are filtered to their common glyph names (intersection of
-        the two glyphOrders, including template entries on both sides) and
-        compared positionally. The first mismatching name is reported per
-        source — subsequent mismatches typically cascade from the first one
-        and would just spam the list.
+        This is what fontmake trips over. When the sources' ``features.fea``
+        files are not all identical, ufo2ft compiles features per master and
+        varLib then merges the master GPOS tables; that merge sorts each
+        master's coverage by the *default's* glyph ids and raises
+        ``InconsistentGlyphOrder`` when a master's glyphs do not come in the
+        default's order.
+
+        Both lists are filtered to their common glyph names first, so a master
+        that simply has fewer glyphs is fine -- a subset in the right order is
+        what a sparse master looks like. Only the first mismatching name is
+        reported per source; the rest cascade from it.
         """
         # Find default font
-        default_lookup = path_to_source.get(default_source_desc.path) or path_to_source.get(
-            Path(default_source_desc.path).name
-        )
+        default_lookup = path_to_source.for_descriptor(default_source_desc)
         if default_lookup is None:
             return
 
@@ -294,14 +214,12 @@ class GlyphOrderChecker(BaseChecker):
                 continue
             if source_desc.path is None:
                 continue
-            # Sparse masters are not expected to share full structure with
-            # the default; their glyphOrder differing is normal.
-            if self._is_sparse_source(source_desc):
+            # A layer master has no glyph order of its own: it shares the
+            # parent UFO's, which is checked once, through that UFO.
+            if getattr(source_desc, "layerName", None):
                 continue
 
-            lookup = path_to_source.get(source_desc.path) or path_to_source.get(
-                Path(source_desc.path).name
-            )
+            lookup = path_to_source.for_descriptor(source_desc)
             if lookup is None:
                 continue
 

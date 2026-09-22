@@ -77,6 +77,41 @@ Unified validation system for DesignSpace documents. Combines structural checks,
 | 4.8 | `WRONG_CONTOUR_DIRECTION` | Contour direction differs | Specific source |
 | 4.9 | `INCOMPATIBLE_GLYPH` | Incompatible construction | Groups by digest |
 | 4.10 | `DIFFERENT_UNICODES` | Unicode values differ | Groups by value |
+| 4.11 | `GLYPH_AXIS_SPAN_GAP` | Glyph does not reach one end of an axis | Binary: axis + end |
+| 4.12 | `GLYPH_EMPTY_IN_SOURCE` | Empty here, drawn elsewhere | Binary: empty in X |
+
+Codes 0-10 match LettError's designspaceProblems. Codes past 10 are ours.
+**The numbers are a public contract** -- other projects key on them -- so a
+retired check keeps its number (see 8.2 and 9.1) and new checks only ever get
+new ones.
+
+### What a master is allowed to skip
+
+There used to be an `_is_sparse_source()` in `checkers/base.py` that called a
+master sparse when its name contained the substring "sparse". That is a house
+convention, meaningless in a designspace somebody else wrote, and it decided
+real checks. It is gone. What replaced it follows what fontTools and ufo2ft
+actually do:
+
+| Question | Answer | Where |
+|---|---|---|
+| May a glyph skip this master? | Yes in the middle of an axis, no at either end and no in the default | `axis_span.py`, codes 4.7 / 4.11 |
+| May a master have fewer glyphs? | Yes, if the ones it has are in the default's order | code 9.3 |
+| May a master have its own kerning pairs? | Yes, any set | not checked |
+| May a master have no kern groups? | No, if the others have them | code 5.6 |
+| May a master have its own features.fea? | Only if every non-default master matches the default, or all are empty | code 8.3 |
+| Do layer sources get checked for these? | No -- a layer has no kerning, features or glyph order of its own | `_is_layer_source()` |
+
+Why the ends of an axis matter: varLib builds a per-glyph model from the
+masters that have the glyph, so a gap in the middle interpolates away. Past the
+glyph's *last* master the variation dies out and the glyph reverts to the
+**default master's shape** while its neighbours keep changing -- measured on a
+0 / 0.5 / 1.0 axis with values 100 / 150 / 300 and the last master missing: 0.75
+gives 125 and 1.0 gives 100. The font builds without a word. Axes are judged
+one at a time, so a missing corner master in a two-axis space is fine.
+
+`axis_span.py` is deliberately free of GTK and of `font_rover` imports: it is
+the first piece written for the eventual standalone package.
 
 ### Location Patterns
 

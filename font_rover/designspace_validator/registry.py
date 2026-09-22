@@ -480,21 +480,19 @@ class ValidatorRegistry:
         if self._entry is None:
             return None
 
-        from pathlib import Path
-
         from font_rover.designspace import DesignSpaceEntry
 
-        # Build set of paths in sub_doc
-        sub_doc_paths = set()
-        for source in sub_doc.sources:
-            if source.path:
-                sub_doc_paths.add(Path(source.path).resolve())
+        from .checkers.base import BaseChecker
 
-        # Filter entry sources
+        # Match on path *and* layer. In a layer-based designspace every master
+        # of a UFO answers to the same path, so a path-only filter handed each
+        # slice every layer of that UFO -- including layers belonging to
+        # another discrete slice.
         filtered_sources = []
-        for font_source in self._entry.sources:
-            if font_source.path.resolve() in sub_doc_paths:
-                filtered_sources.append(font_source)
+        for descriptor in sub_doc.sources:
+            matched = BaseChecker._match_source(descriptor, self._entry.sources)
+            if matched is not None and matched not in filtered_sources:
+                filtered_sources.append(matched)
 
         # Create new entry with filtered sources
         return DesignSpaceEntry(

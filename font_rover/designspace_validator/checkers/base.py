@@ -187,28 +187,108 @@ class BaseChecker(ABC):
 
         return " ".join(parts)
 
+    # --- source identity -------------------------------------------------
+    #
+    # There used to be an _is_sparse_source() here that looked for the
+    # substring "sparse" in a source's name. That is a house convention: it
+    # means nothing in a designspace somebody else wrote, and it decided real
+    # checks. What actually matters is spelled out in two places instead --
+    # `axis_span.py` for which masters a glyph may skip, and the layer/path
+    # distinction below for which sources carry kerning, features and a glyph
+    # order of their own.
+
     @staticmethod
-    def _is_sparse_source(source) -> bool:
-        """Detect sparse masters by "sparse" substring in source name or filename.
+    def _resolve_path(value) -> Path | None:
+        """Resolve a path from a descriptor or a FontSource, if it has one."""
+        if value is None:
+            return None
+        try:
+            return Path(str(value)).resolve()
+        except OSError:  # pragma: no cover - defensive
+            return Path(str(value))
 
-        Sparse masters contain only a handful of glyph corrections relative
-        to full masters and are expected to be incomplete. Validation checks
-        that assume full glyph/feature coverage should skip them.
+    @classmethod
+    def _match_source(cls, descriptor, sources):
+        """The loaded FontSource a designspace source descriptor stands for.
 
-        Accepts either a fontTools SourceDescriptor or a FontSource.
+        In a layer-based designspace several masters share one UFO path and
+        differ only by layer, so a path-only match hands back an arbitrary one
+        of them.
+        """
+        wanted_path = cls._resolve_path(getattr(descriptor, "path", None))
+        if wanted_path is None:
+            return None
+        same_path = [s for s in sources if cls._resolve_path(s.path) == wanted_path]
+        if len(same_path) <= 1:
+            return same_path[0] if same_path else None
+
+        layer = getattr(descriptor, "layerName", None)
+        for source in same_path:
+            if source.resolve_layer_name(layer) == source.master_layer_name():
+                return source
+        return same_path[0]
+
+    def _default_font_source(self, doc=None, sources=None):
+        """The FontSource the document calls default, layer included."""
+        doc = doc if doc is not None else self.doc
+        if sources is None:
+            sources = self.entry.sources if self.entry is not None else []
+        if not sources:
+            return None
+        try:
+            descriptor = doc.findDefault()
+        except Exception:  # pragma: no cover - defensive
+            descriptor = None
+        if descriptor is not None:
+            matched = self._match_source(descriptor, sources)
+            if matched is not None:
+                return matched
+        return sources[0]
+
+    @staticmethod
+    def _source_label(source) -> str:
+        """Name a source so that two layers of one UFO read differently."""
+        if source is None:
+            return ""
+        name = Path(str(source.path)).name if getattr(source, "path", None) else ""
+        layer = None
+        if hasattr(source, "master_layer_name"):
+            layer = source.master_layer_name()
+        else:
+            layer = getattr(source, "layerName", None)
+        if layer:
+            return f"{name} [{layer}]" if name else str(layer)
+        style = getattr(source, "style_name", None) or getattr(source, "styleName", None)
+        if style:
+            return f"{name} ({style})" if name else str(style)
+        return name or str(getattr(source, "name", "") or "")
+
+    @staticmethod
+    def _is_layer_source(source) -> bool:
+        """Whether this master is a layer inside a UFO rather than a UFO.
+
+        ufo2ft skips layer sources for kerning and never compiles their
+        features; their glyph order is their parent UFO's. So every check about
+        a UFO's own data has to leave them out -- not because they are
+        "sparse", but because they are not separate UFOs.
         """
         if source is None:
             return False
-        name = getattr(source, "name", "") or ""
-        if "sparse" in name.lower():
-            return True
-        filename = getattr(source, "filename", None)
-        if filename and "sparse" in Path(filename).name.lower():
-            return True
-        path = getattr(source, "path", None)
-        if path is not None and "sparse" in Path(str(path)).name.lower():
-            return True
-        return False
+        if hasattr(source, "master_layer_name"):
+            return bool(source.master_layer_name())
+        return bool(getattr(source, "layerName", None))
+
+    @staticmethod
+    def _own_keys(source) -> set[str]:
+        """Glyph names this master actually draws, without a layer fallback."""
+        if source is None:
+            return set()
+        try:
+            if hasattr(source, "get_layer"):
+                return set(source.get_layer().keys())
+            return set(source.font.keys())
+        except Exception:  # pragma: no cover - defensive
+            return set()
 
     @staticmethod
     def _format_discrete_location(loc: dict[str, float] | None) -> str:

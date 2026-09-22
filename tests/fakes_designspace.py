@@ -149,6 +149,9 @@ class FakeFont:
         self.kerning = dict(kerning or {})
         self.features = FakeFeatures(features)
         self.lib = {}
+        # A real UFO keeps its own order; ours follows insertion order, which
+        # is what a test writes out in its glyph list.
+        self.glyphOrder = self._default.keys()
 
     # --- default layer is the font's own mapping, as in fontParts ---
 

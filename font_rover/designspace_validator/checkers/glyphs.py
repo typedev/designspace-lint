@@ -48,10 +48,15 @@ DIFFERENT_ANCHORS = 2  # different number of anchors in glyph
 DIFFERENT_ON_CURVES = 3  # different number of on-curve points on contour
 DIFFERENT_OFF_CURVES = 4  # different number of off-curve points on contour
 WRONG_CURVE_TYPE = 5  # curve has wrong type
-DEFAULT_GLYPH_EMPTY = 7  # default glyph is empty
+DEFAULT_GLYPH_EMPTY = 7  # glyph missing from the default master
 WRONG_CONTOUR_DIRECTION = 8  # contour has wrong direction
 INCOMPATIBLE_GLYPH = 9  # incompatible constructions for glyph
 DIFFERENT_UNICODES = 10  # different unicodes in glyph
+# Codes past 10 are ours; designspaceProblems stops at 10. They are a public
+# contract now (font-rover and other consumers key on them), so numbers are
+# only ever added, never reused.
+GLYPH_AXIS_SPAN_GAP = 11  # glyph does not reach one end of an axis
+GLYPH_EMPTY_IN_SOURCE = 12  # glyph empty in one master, drawn in others
 
 # Minimum area threshold to consider direction meaningful
 MIN_AREA_THRESHOLD = 1000
@@ -156,91 +161,13 @@ class GlyphsChecker(BaseChecker):
 
     def check(self) -> Iterator[CheckResult]:
         """Run all glyph compatibility checks."""
-        entry = self.entry
-        if entry is None:
-            logger.debug("GlyphsChecker requires DesignSpaceEntry with loaded fonts")
-            return
-
-        if len(entry.sources) < 2:
-            return  # Nothing to compare
-
-        # Find default source using designspace document
-        default_font = self._find_default_font()
-        if default_font is None:
-            logger.warning("Could not find default font")
-            return
-
-        # Collect all glyph names from all sources
-        all_glyphs: set[str] = set()
-        for source in entry.sources:
-            all_glyphs.update(source.font.keys())
-
-        # 4.7: Check for glyphs missing in default (default glyph is empty)
-        # Find default source name for location display
-        default_source_name = None
-        try:
-            default_desc = self.doc.findDefault()
-            if default_desc is not None and default_desc.path:
-                from pathlib import Path
-
-                default_source_name = Path(default_desc.path).name
-        except Exception:
-            pass
-        if default_source_name is None and entry.sources:
-            default_source_name = entry.sources[0].path.name
-
-        glyphs_to_check = []
-        for glyph_name in all_glyphs:
-            if glyph_name not in default_font:
-                # Find which sources have this glyph
-                present_in = [s.path.name for s in entry.sources if glyph_name in s.font]
-                missing_in = [default_source_name] if default_source_name else ["default"]
-
-                # Location shows where it exists (for navigation)
-                if len(present_in) <= 2:
-                    location = f"exists in {', '.join(s.replace('.ufo', '') for s in present_in)}"
-                else:
-                    location = f"exists in {len(present_in)} sources"
-
-                yield self._make_result(
-                    code=DEFAULT_GLYPH_EMPTY,
-                    description=f"missing in default, exists in {len(present_in)} sources",
-                    glyph_name=glyph_name,
-                    location=location,
-                    is_structural=False,
-                    details=f"Glyph '{glyph_name}' exists in {', '.join(present_in[:3])} but not in default source",
-                    problem_type=GlyphProblemType.EMPTY_GLYPH,
-                    raw_data={
-                        "glyphName": glyph_name,
-                        "locationType": "binary",
-                        "presentIn": present_in,
-                        "missingIn": missing_in,
-                    },
-                )
-            else:
-                glyphs_to_check.append(glyph_name)
-
-        # Check glyphs sequentially (ThreadPoolExecutor doesn't help due to GIL)
-        total_glyphs = len(glyphs_to_check)
-        report_interval = max(1, total_glyphs // 100)  # Report every 1%
-
-        for i, glyph_name in enumerate(glyphs_to_check):
-            try:
-                results = self._check_glyph(glyph_name)
-                yield from results
-            except Exception as e:
-                logger.warning(f"Error checking glyph {glyph_name}: {e}")
-
-            # Report progress
-            if self._on_glyph_progress and (i % report_interval == 0 or i == total_glyphs - 1):
-                self._on_glyph_progress(i + 1, total_glyphs)
+        yield from self._check_slices(glyph_names=None)
 
     def check_glyphs(self, glyph_names: set[str]) -> Iterator[CheckResult]:
         """
         Check only specified glyphs.
 
         This is used for partial recheck after fixing specific glyphs.
-        Includes the missing-in-default check (4.7) for the specified glyphs.
 
         Args:
             glyph_names: Set of glyph names to check
@@ -248,6 +175,38 @@ class GlyphsChecker(BaseChecker):
         Yields:
             CheckResult for each problem found
         """
+        yield from self._check_slices(glyph_names=set(glyph_names))
+
+    def _slices(self) -> list[tuple[dict, object, list]]:
+        """The designspace split into interpolable parts, with their sources.
+
+        A discrete axis does not interpolate: each of its values is a separate
+        space with its own default and its own extremes, so every rule here is
+        a rule about one slice. When the registry has already split the
+        document this yields that one slice back unchanged.
+        """
+        from fontTools.designspaceLib.split import splitInterpolable
+
+        entry = self.entry
+        try:
+            splits = list(splitInterpolable(self.doc))
+        except Exception as exc:  # pragma: no cover - malformed document
+            logger.debug(f"splitInterpolable failed: {exc}")
+            return [({}, self.doc, list(entry.sources))]
+
+        slices = []
+        for discrete_loc, sub_doc in splits:
+            sources = []
+            for descriptor in sub_doc.sources:
+                matched = self._match_source(descriptor, entry.sources)
+                if matched is not None and matched not in sources:
+                    sources.append(matched)
+            if sources:
+                slices.append((discrete_loc, sub_doc, sources))
+        return slices or [({}, self.doc, list(entry.sources))]
+
+    def _check_slices(self, glyph_names: set[str] | None) -> Iterator[CheckResult]:
+        """Run the per-glyph rules over every interpolable slice."""
         entry = self.entry
         if entry is None:
             logger.debug("GlyphsChecker requires DesignSpaceEntry with loaded fonts")
@@ -256,75 +215,195 @@ class GlyphsChecker(BaseChecker):
         if len(entry.sources) < 2:
             return  # Nothing to compare
 
-        # Find default source
-        default_font = self._find_default_font()
-        if default_font is None:
-            logger.warning("Could not find default font")
-            return
-
-        # Find default source name for location display
-        default_source_name = None
-        try:
-            default_desc = self.doc.findDefault()
-            if default_desc is not None and default_desc.path:
-                from pathlib import Path
-
-                default_source_name = Path(default_desc.path).name
-        except Exception:
-            pass
-        if default_source_name is None and entry.sources:
-            default_source_name = entry.sources[0].path.name
-
-        for glyph_name in glyph_names:
-            # Check if glyph exists in any source
-            exists_anywhere = any(glyph_name in s.font for s in entry.sources)
-            if not exists_anywhere:
+        for _discrete_loc, sub_doc, sources in self._slices():
+            if len(sources) < 2:
                 continue
 
-            # 4.7: Check for missing in default
-            if glyph_name not in default_font:
-                present_in = [s.path.name for s in entry.sources if glyph_name in s.font]
-                missing_in = [default_source_name] if default_source_name else ["default"]
+            default_source = self._default_font_source(sub_doc, sources)
+            if default_source is None:
+                logger.warning("Could not find default font")
+                continue
 
-                # Location shows where it exists (for navigation)
-                if len(present_in) <= 2:
-                    location = f"exists in {', '.join(s.replace('.ufo', '') for s in present_in)}"
-                else:
-                    location = f"exists in {len(present_in)} sources"
+            present_by_glyph: dict[str, list] = {}
+            for source in sources:
+                for name in self._own_keys(source):
+                    present_by_glyph.setdefault(name, []).append(source)
 
-                yield self._make_result(
-                    code=DEFAULT_GLYPH_EMPTY,
-                    description=f"missing in default, exists in {len(present_in)} sources",
-                    glyph_name=glyph_name,
-                    location=location,
-                    is_structural=False,
-                    details=f"Glyph '{glyph_name}' exists in {', '.join(present_in[:3])} but not in default source",
-                    problem_type=GlyphProblemType.EMPTY_GLYPH,
-                    raw_data={
-                        "glyphName": glyph_name,
-                        "locationType": "binary",
-                        "presentIn": present_in,
-                        "missingIn": missing_in,
-                    },
-                )
-            else:
-                # Check glyph compatibility
+            if glyph_names is not None:
+                present_by_glyph = {
+                    name: srcs for name, srcs in present_by_glyph.items() if name in glyph_names
+                }
+
+            glyphs_to_check = []
+            for glyph_name, present_in in sorted(present_by_glyph.items()):
+                if default_source not in present_in:
+                    yield self._missing_in_default_result(glyph_name, present_in, default_source)
+                    continue
+                yield from self._check_axis_coverage(glyph_name, sub_doc, sources, present_in)
+                yield from self._check_empty_glyphs(glyph_name, present_in)
+                glyphs_to_check.append(glyph_name)
+
+            # Check glyphs sequentially (ThreadPoolExecutor doesn't help due to GIL)
+            total_glyphs = len(glyphs_to_check)
+            report_interval = max(1, total_glyphs // 100)  # Report every 1%
+
+            for i, glyph_name in enumerate(glyphs_to_check):
                 try:
-                    results = self._check_glyph(glyph_name)
-                    yield from results
+                    yield from self._check_glyph(glyph_name, present_by_glyph[glyph_name])
                 except Exception as e:
                     logger.warning(f"Error checking glyph {glyph_name}: {e}")
 
-    def _check_glyph(self, glyph_name: str) -> list[CheckResult]:
+                # Report progress
+                if self._on_glyph_progress and (i % report_interval == 0 or i == total_glyphs - 1):
+                    self._on_glyph_progress(i + 1, total_glyphs)
+
+    def _missing_in_default_result(self, glyph_name, present_in, default_source) -> CheckResult:
+        """4.7: the glyph exists somewhere but not in the default master.
+
+        varLib copies the default master and builds variations on top of it, so
+        a glyph the default does not have is simply absent from the compiled
+        font -- silently, however many other masters draw it.
         """
-        Check a single glyph across all sources.
+        present_names = [self._source_label(s) for s in present_in]
+        missing_name = self._source_label(default_source)
+
+        if len(present_names) <= 2:
+            location = f"exists in {', '.join(n.replace('.ufo', '') for n in present_names)}"
+        else:
+            location = f"exists in {len(present_names)} sources"
+
+        return self._make_result(
+            code=DEFAULT_GLYPH_EMPTY,
+            description=f"missing in default, exists in {len(present_names)} sources",
+            glyph_name=glyph_name,
+            location=location,
+            is_structural=True,
+            details=(
+                f"Glyph '{glyph_name}' exists in {', '.join(present_names[:3])} but not in the "
+                f"default source ({missing_name}); it will be dropped from the variable font"
+            ),
+            problem_type=GlyphProblemType.MISSING_GLYPH,
+            raw_data={
+                "glyphName": glyph_name,
+                "locationType": "binary",
+                "presentIn": present_names,
+                "missingIn": [missing_name],
+            },
+        )
+
+    def _check_axis_coverage(
+        self, glyph_name, sub_doc, sources, present_in
+    ) -> Iterator[CheckResult]:
+        """4.11: the glyph does not reach as far along an axis as the space does.
+
+        Missing from a master in the middle is fine -- varLib interpolates the
+        glyph from the masters that have it. Missing from a master at the end
+        of an axis is not: past the glyph's last master the variation dies away
+        and the glyph falls back to the default master's shape, while its
+        neighbours keep changing. Nothing in the build warns about it.
+        """
+        from ..axis_span import axis_span_gaps
+
+        descriptors = {id(source): None for source in sources}
+        all_descs = []
+        covering_descs = []
+        for descriptor in sub_doc.sources:
+            matched = self._match_source(descriptor, sources)
+            if matched is None or id(matched) not in descriptors:
+                continue
+            all_descs.append(descriptor)
+            if matched in present_in:
+                covering_descs.append(descriptor)
+
+        for gap in axis_span_gaps(sub_doc, all_descs, covering_descs):
+            end = "maximum" if gap.side == "maximum" else "minimum"
+            missing_in = [self._source_label(s) for s in sources if s not in present_in]
+            yield self._make_result(
+                code=GLYPH_AXIS_SPAN_GAP,
+                description=(
+                    f"missing at {gap.axis} {end} ({gap.required:g}); "
+                    f"reverts to the default shape past {gap.covered:g}"
+                ),
+                glyph_name=glyph_name,
+                location=f"{gap.axis} {gap.covered:g} of {gap.required:g}",
+                is_structural=True,
+                details=(
+                    f"Glyph '{glyph_name}' is drawn only up to {gap.axis}={gap.covered:g}, while "
+                    f"the masters reach {gap.required:g}. Beyond its last master the glyph goes "
+                    f"back to the default master's shape."
+                ),
+                problem_type=GlyphProblemType.MISSING_GLYPH,
+                raw_data={
+                    "glyphName": glyph_name,
+                    "locationType": "binary",
+                    "axis": gap.axis,
+                    "side": gap.side,
+                    "required": gap.required,
+                    "covered": gap.covered,
+                    "missingIn": missing_in,
+                },
+            )
+
+    def _check_empty_glyphs(self, glyph_name, present_in) -> Iterator[CheckResult]:
+        """4.12: the glyph is drawn in some masters and left empty in others.
+
+        A glyph empty everywhere is an ordinary spacing glyph. One that is
+        empty next to masters that draw it cannot interpolate with them: it has
+        no points to match, so the shape collapses.
+        """
+        drawn = []
+        empty = []
+        for source in present_in:
+            glyph = source.own_glyph(glyph_name)
+            if glyph is None:
+                continue
+            if len(glyph) == 0 and not glyph.components:
+                empty.append(source)
+            else:
+                drawn.append(source)
+
+        if not empty or not drawn:
+            return
+
+        empty_names = [self._source_label(s) for s in empty]
+        for source in empty:
+            yield self._make_result(
+                code=GLYPH_EMPTY_IN_SOURCE,
+                description=f"empty here, drawn in {len(drawn)} sources",
+                glyph_name=glyph_name,
+                location=self._source_label(source).replace(".ufo", ""),
+                is_structural=False,
+                details=(
+                    f"Glyph '{glyph_name}' has no contours and no components in "
+                    f"{self._source_label(source)}, but is drawn in "
+                    f"{', '.join(self._source_label(s) for s in drawn[:3])}"
+                ),
+                problem_type=GlyphProblemType.EMPTY_GLYPH,
+                raw_data={
+                    "glyphName": glyph_name,
+                    "locationType": "binary",
+                    "presentIn": [self._source_label(s) for s in drawn],
+                    "missingIn": empty_names,
+                },
+            )
+
+    def _check_glyph(self, glyph_name: str, sources=None) -> list[CheckResult]:
+        """
+        Check a single glyph across the sources that draw it.
 
         Uses DigestPointStructurePen for precise structure comparison,
         matching designspaceProblems logic.
+
+        Args:
+            glyph_name: Glyph to compare.
+            sources: The masters to compare, defaulting to every loaded one.
+                Callers pass one interpolable slice at a time.
         """
         entry = self.entry
         if entry is None:
             return []
+        if sources is None:
+            sources = entry.sources
 
         results = []
 
@@ -341,16 +420,16 @@ class GlyphsChecker(BaseChecker):
 
         num_sources = 0
 
-        for source in entry.sources:
-            font = source.font
-            # Quick check - avoid full glyph load if possible
-            if glyph_name not in font:
+        for source in sources:
+            # A layer master draws from its own layer; reading the UFO's
+            # default layer would compare one master with another's outline.
+            glyph = source.own_glyph(glyph_name)
+            if glyph is None:
                 continue
 
             num_sources += 1
-            source_name = source.path.name
+            source_name = self._source_label(source)
             all_source_names.append(source_name)
-            glyph = font[glyph_name]
 
             # Get digest using DigestPointStructurePen
             pen = DigestPointStructurePen()
@@ -683,34 +762,14 @@ class GlyphsChecker(BaseChecker):
         return results
 
     def _find_default_font(self):
+        """The default master's font, matched by path *and* layer.
+
+        Kept as a thin wrapper over the shared source lookup: a font alone
+        cannot say which layer of a shared UFO it came from, so callers that
+        need the master itself use ``_default_font_source``.
         """
-        Find the default font using designspace document.
-
-        Uses doc.findDefault() to find the correct default source,
-        then matches it to the loaded fonts in entry.sources.
-        """
-        entry = self.entry
-        if entry is None:
-            return None
-
-        # Use doc.findDefault() if available
-        try:
-            default_desc = self.doc.findDefault()
-            if default_desc is not None and default_desc.path:
-                from pathlib import Path
-
-                default_path = Path(default_desc.path).resolve()
-                for source in entry.sources:
-                    if source.path.resolve() == default_path:
-                        return source.font
-        except Exception:
-            pass
-
-        # Fallback: first source or one with copyInfo
-        for source in entry.sources:
-            if getattr(source, "copyInfo", False):
-                return source.font
-        return entry.sources[0].font if entry.sources else None
+        source = self._default_font_source()
+        return source.font if source is not None else None
 
     @staticmethod
     def _get_contour_direction(contour) -> int:

@@ -24,10 +24,12 @@ from .base import BaseChecker
 
 logger = logging.getLogger(__name__)
 
-# Error codes (match designspaceProblems exactly)
+# Error codes (0-1 match designspaceProblems exactly)
 FEATURE_FILE_CORRUPT = 0  # 8,0 - parse error
 FEATURE_MISSING = 1  # 8,1 - feature in some sources but not all
-FEATURE_IN_SPARSE = 2  # 8,2 - sparse master has non-empty features.fea (compile blocker)
+# 8,2 was FEATURE_IN_SPARSE, a check that rested on "sparse" appearing in a
+# master's name. Retired, not renumbered: the codes are a public contract.
+FEATURES_DIFFER_FROM_DEFAULT = 3  # 8,3 - ufo2ft drops to per-master compilation
 
 # Features to check for consistency
 COUNTED_FEATURES = ["kern", "mark", "mkmk"]
@@ -63,13 +65,15 @@ class FeaturesChecker(BaseChecker):
             logger.debug("fontTools.feaLib not available, skipping features check")
             return
 
+        yield from self._check_variable_feature_compat()
+
         # Count features across sources
         feature_counts = {tag: 0 for tag in COUNTED_FEATURES}
         source_count = 0
 
-        for source in entry.sources:
+        for source in self._ufo_sources():
             font = source.font
-            source_name = source.path.name
+            source_name = self._source_label(source)
 
             # Get features text
             features = getattr(font, "features", None)
@@ -78,25 +82,6 @@ class FeaturesChecker(BaseChecker):
 
             fea_text = getattr(features, "text", None)
             if not fea_text:
-                continue
-
-            # Sparse masters must not carry features — fontmake compiles all
-            # features from the default master, and any feature content here
-            # will either be silently dropped or cause a compile error.
-            if self._is_sparse_source(source) and fea_text.strip():
-                yield self._make_result(
-                    code=FEATURE_IN_SPARSE,
-                    description="sparse master contains features.fea",
-                    location=source_name,
-                    details=(
-                        f"{len(fea_text)} chars of feature code in a sparse "
-                        "master — features must live only in full masters"
-                    ),
-                    is_structural=True,
-                    raw_data={"chars": len(fea_text)},
-                )
-                # Don't count sparse toward feature consistency — they skew
-                # the kern/mark/mkmk tallies and trigger false FEATURE_MISSING.
                 continue
 
             source_count += 1
@@ -150,3 +135,92 @@ class FeaturesChecker(BaseChecker):
                         is_structural=False,
                         raw_data={"feature": tag, "count": count, "total": source_count},
                     )
+
+    def _ufo_sources(self) -> list:
+        """One source per UFO: layers share their parent's features.fea."""
+        seen: set = set()
+        sources = []
+        for source in self.entry.sources:
+            if self._is_layer_source(source):
+                continue
+            key = self._resolve_path(source.path)
+            if key in seen:
+                continue
+            seen.add(key)
+            sources.append(source)
+        return sources
+
+    def _check_variable_feature_compat(self) -> Iterator[CheckResult]:
+        """8,3: features that force ufo2ft off the variable-feature path.
+
+        ufo2ft compiles one variable GPOS from the default master's
+        ``features.fea`` -- but only when every other master's file tokenizes
+        the same as the default's, **or** every other master's file is empty
+        (`featureCompiler._featuresCompatible`). A mix of the two is not
+        compatible either.
+
+        Falling off that path is silent: ufo2ft then compiles features in each
+        master and varLib merges the results, where a master whose glyphs are
+        not in the default's order raises ``InconsistentGlyphOrder`` and a
+        master with a different set of lookups raises ``ShouldBeConstant``.
+        The report has to name that, because by the time fontmake fails the
+        error points somewhere else entirely.
+        """
+        try:
+            from ufo2ft.featureCompiler import tokenizeLayoutFeatures
+        except Exception:
+            logger.debug("ufo2ft not available, skipping variable-feature compatibility check")
+            return
+
+        sources = self._ufo_sources()
+        if len(sources) < 2:
+            return
+
+        default_source = self._default_font_source(sources=sources)
+        others = [s for s in sources if s is not default_source]
+        if default_source is None or not others:
+            return
+
+        def tokens(source):
+            try:
+                return tokenizeLayoutFeatures(source.font, os.path.dirname(str(source.path)))
+            except Exception as exc:  # a parse error is reported as 8,0
+                logger.debug(f"tokenizing features failed for {source.path}: {exc}")
+                return None
+
+        default_tokens = tokens(default_source)
+        if default_tokens is None:
+            return
+
+        other_tokens = {id(s): tokens(s) for s in others}
+        if any(t is None for t in other_tokens.values()):
+            return
+
+        all_same = all(other_tokens[id(s)] == default_tokens for s in others)
+        all_empty = all(not other_tokens[id(s)] for s in others)
+        if all_same or all_empty:
+            return
+
+        default_name = self._source_label(default_source)
+        for source in others:
+            source_tokens = other_tokens[id(source)]
+            if source_tokens == default_tokens:
+                state = "same as the default's"
+            elif not source_tokens:
+                state = "empty"
+            else:
+                state = "different from the default's"
+            yield self._make_result(
+                code=FEATURES_DIFFER_FROM_DEFAULT,
+                description=f"features.fea is {state}",
+                location=self._source_label(source),
+                is_structural=True,
+                details=(
+                    f"ufo2ft builds one variable feature file from {default_name} only when "
+                    f"every other master's features.fea matches it or all of them are empty. "
+                    f"Here they are mixed, so features are compiled per master instead and "
+                    f"varLib must merge them -- which fails on a differing glyph order or a "
+                    f"differing set of lookups."
+                ),
+                raw_data={"font": self._source_label(source), "state": state},
+            )
