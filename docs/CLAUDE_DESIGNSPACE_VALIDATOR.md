@@ -98,7 +98,8 @@ actually do:
 | May a glyph skip this master? | Yes in the middle of an axis, no at either end and no in the default | `axis_span.py`, codes 4.7 / 4.11 |
 | May a master have fewer glyphs? | Yes, if the ones it has are in the default's order | code 9.3 |
 | May a master have its own kerning pairs? | Yes, any set | not checked |
-| May a master have no kern groups? | No, if the others have them | code 5.6 |
+| May a master have no kerning at all? | No, if the default has some -- the family's kerning sags to 0 there | code 5.0 |
+| May a master have no kern groups? | No, if it has pairs and the others have groups | code 5.6 |
 | May a master have its own features.fea? | Only if every non-default master matches the default, or all are empty | code 8.3 |
 | Do layer sources get checked for these? | No -- a layer has no kerning, features or glyph order of its own | `_is_layer_source()` |
 
