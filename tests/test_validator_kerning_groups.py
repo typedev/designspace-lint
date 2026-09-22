@@ -15,7 +15,7 @@ import pytest
 
 pytest.importorskip("gi")
 
-from font_rover.designspace_validator.checkers.kerning import (  # noqa: E402
+from designspace_lint.checkers.kerning import (  # noqa: E402
     GLYPH_IN_TWO_KERN_GROUPS,
     KERNING_GROUP_DIFFERS,
     NO_KERNING_GROUPS_SOURCE,

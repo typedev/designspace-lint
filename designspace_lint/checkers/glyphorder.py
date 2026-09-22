@@ -22,12 +22,12 @@ from typing import TYPE_CHECKING, Iterator
 
 from fontTools.designspaceLib.split import splitInterpolable
 
-from ...utils.glyph_order import safe_glyph_order
+from ..glyph_order import extras_for_subdoc, owns_glyph, safe_glyph_order
 from ..model import CATEGORY_GLYPHORDER, CheckResult
 from .base import BaseChecker
 
 if TYPE_CHECKING:
-    from font_rover.designspace import FontSource
+    from ..protocols import SourceLike as FontSource
 
 logger = logging.getLogger(__name__)
 
@@ -84,14 +84,6 @@ class GlyphOrderChecker(BaseChecker):
             logger.debug("GlyphOrderChecker requires DesignSpaceEntry with loaded fonts")
             return
 
-        try:
-            from font_rover.designspace import GlyphOrderManager
-
-            manager = GlyphOrderManager(entry)
-        except Exception as e:
-            logger.warning(f"Failed to create GlyphOrderManager: {e}")
-            return
-
         # Descriptor -> (index, FontSource). Keying this by path alone made
         # every layer of a shared UFO answer to the same key; a master is a
         # path *and* a layer.
@@ -108,7 +100,7 @@ class GlyphOrderChecker(BaseChecker):
 
             # --- Check 9.0: Extra glyphs ---
             yield from self._check_extra_glyphs(
-                manager, sub_doc, path_to_source, discrete_loc, discrete_label
+                sub_doc, path_to_source, default_source_desc, discrete_loc, discrete_label
             )
 
             # 9.1 (missing glyphs) is deliberately not run here any more: which
@@ -127,28 +119,38 @@ class GlyphOrderChecker(BaseChecker):
 
     def _check_extra_glyphs(
         self,
-        manager,
         sub_doc,
-        path_to_source: dict,
+        path_to_source: "_SourceLookup",
+        default_source_desc,
         discrete_loc: dict | None,
         discrete_label: str,
     ) -> Iterator[CheckResult]:
-        """Check for glyphs in sources but not in default glyphOrder."""
-        extras = manager.get_extras(discrete_loc)
+        """9.0: glyphs the other masters carry and the default does not.
+
+        varLib copies the default master and builds variations on top of it,
+        so a name only another master lists is absent from the compiled font.
+        """
+        default_lookup = path_to_source.for_descriptor(default_source_desc)
+        if default_lookup is None:
+            return
+        _default_idx, default_source = default_lookup
+
+        others = []
+        for source_desc in sub_doc.sources:
+            if source_desc is default_source_desc or source_desc.path is None:
+                continue
+            lookup = path_to_source.for_descriptor(source_desc)
+            if lookup is not None:
+                others.append(lookup[1])
+
+        extras = extras_for_subdoc(default_source, others)
 
         for glyph_name in extras:
-            # Find which sources contain this extra glyph
-            sources_with_glyph = []
-            for source_desc in sub_doc.sources:
-                if source_desc.path is None:
-                    continue
-                lookup = path_to_source.for_descriptor(source_desc)
-                if lookup is None:
-                    continue
-                idx, font_source = lookup
-                if manager.exists_in_source(glyph_name, idx):
-                    source_name = _format_source_name(font_source)
-                    sources_with_glyph.append(source_name)
+            # Find which sources draw this extra glyph, by their own layer --
+            # a layer master used to claim its parent UFO's whole key set.
+            sources_with_glyph = [
+                _format_source_name(source) for source in others if owns_glyph(source, glyph_name)
+            ]
 
             location = ", ".join(sources_with_glyph[:3])
             if len(sources_with_glyph) > 3:

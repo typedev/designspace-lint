@@ -10,7 +10,7 @@ skipping the master at the end of an axis makes the glyph fall back to the
 default master's shape past its own last master.
 """
 
-from font_rover.designspace_validator.axis_span import axis_span_gaps, continuous_axes
+from designspace_lint.axis_span import axis_span_gaps, continuous_axes
 from tests.fakes_designspace import build_doc
 
 

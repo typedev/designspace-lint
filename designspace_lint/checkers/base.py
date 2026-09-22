@@ -27,7 +27,7 @@ def _resolve_cached(raw: str) -> Path:
 if TYPE_CHECKING:
     from fontTools.designspaceLib import DesignSpaceDocument
 
-    from font_rover.designspace import DesignSpaceEntry
+    from ..protocols import DesignSpaceLike as DesignSpaceEntry
 
 
 class BaseChecker(ABC):

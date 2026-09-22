@@ -15,7 +15,7 @@ import pytest
 
 pytest.importorskip("gi")
 
-from font_rover.designspace_validator.checkers.glyphorder import (  # noqa: E402
+from designspace_lint.checkers.glyphorder import (  # noqa: E402
     GLYPHORDER_MISSING_GLYPH,
     GLYPHORDER_POSITION_MISMATCH,
     GlyphOrderChecker,

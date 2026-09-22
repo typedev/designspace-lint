@@ -16,7 +16,7 @@ import pytest
 pytest.importorskip("gi")
 pytest.importorskip("ufo2ft")
 
-from font_rover.designspace_validator.checkers.features import (  # noqa: E402
+from designspace_lint.checkers.features import (  # noqa: E402
     FEATURES_DIFFER_FROM_DEFAULT,
     FeaturesChecker,
 )

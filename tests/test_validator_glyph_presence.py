@@ -15,7 +15,7 @@ import pytest
 
 pytest.importorskip("gi")  # the result model is a GObject; no display needed
 
-from font_rover.designspace_validator.checkers.glyphs import (  # noqa: E402
+from designspace_lint.checkers.glyphs import (  # noqa: E402
     DEFAULT_GLYPH_EMPTY,
     GLYPH_AXIS_SPAN_GAP,
     GLYPH_EMPTY_IN_SOURCE,

@@ -25,9 +25,9 @@ from gi.repository import Adw, GLib, Gtk
 
 from font_rover.utils.glyph_order import safe_glyph_order
 
-from .checkers.features import FEATURES_DIFFER_FROM_DEFAULT
-from .checkers.glyphorder import GLYPHORDER_POSITION_MISMATCH
-from .checkers.kerning import KERNING_GROUP_SORTED_DIFF
+from designspace_lint.checkers.features import FEATURES_DIFFER_FROM_DEFAULT
+from designspace_lint.checkers.glyphorder import GLYPHORDER_POSITION_MISMATCH
+from designspace_lint.checkers.kerning import KERNING_GROUP_SORTED_DIFF
 from .model import CATEGORY_FEATURES, CATEGORY_GLYPHORDER, CATEGORY_KERNING
 
 if TYPE_CHECKING:

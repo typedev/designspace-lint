@@ -2,13 +2,47 @@
 
 Component documentation for Claude Code when working with DesignSpace Validator.
 
-**Location**: `font_rover/designspace_validator/`
+**Location**: `designspace_lint/` (the checks) and
+`font_rover/designspace_validator/` (the window, the fixes, the GObject wrapper)
 
 ---
 
 ## Overview
 
 Unified validation system for DesignSpace documents. Combines structural checks, glyph compatibility analysis, and design quality validation into a single module with async/sync execution modes.
+
+### Where the seam is
+
+The checks live in **`designspace_lint/`**, a package that imports neither GTK
+nor font-rover, on its way to its own repository and to PyPI. Everything a
+window needs stays here:
+
+| In `designspace_lint/` | In `font_rover/designspace_validator/` |
+|---|---|
+| `checkers/` — all ten categories | `window.py` — the ProblemsWindow |
+| `model.py` — `CheckResult`, categories, severities | `model.py` — `ProblemItem(GObject)` + re-exports |
+| `engine.py` — `Linter`, `PHASES`, phase order, discrete splitting | `registry.py` — `ValidatorRegistry`: thread + `GLib.idle_add` + wrapping |
+| `loader.py` — open a designspace from a path | `fixes.py`, `feature_sync.py` — the auto-fixes |
+| `axis_span.py`, `glyph_order.py` | `filter_config.py`, `filter_popover.py` |
+| `cli.py` — `designspace-lint <path>` | |
+
+The application passes its own live `DesignSpaceEntry` straight to the checks:
+`font_rover.designspace.FontSource` satisfies `designspace_lint.protocols.SourceLike`
+structurally, and `tests/test_designspace_lint_isolation.py` fails if it stops
+doing so — or if anything in the package grows an import of `gi` or
+`font_rover`, however lazily.
+
+`safe_glyph_order` now lives in `designspace_lint/glyph_order.py` and is
+re-exported from `font_rover/utils/glyph_order.py`, so the thirty-odd call
+sites are unchanged and there is only one copy of it.
+
+From the command line:
+
+```bash
+designspace-lint Family.designspace      # one line per problem; exit 1 if any
+designspace-lint -v Family.designspace   # with details
+designspace-lint --json Family.designspace
+```
 
 ---
 

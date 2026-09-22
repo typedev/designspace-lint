@@ -892,7 +892,7 @@ class ProblemsWindow(Adw.Window):
 
         from gi.repository import GLib
 
-        from .checkers.glyphs import GlyphsChecker
+        from designspace_lint.checkers.glyphs import GlyphsChecker
         from .model import ProblemItem
 
         def worker():
