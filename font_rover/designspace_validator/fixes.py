@@ -617,18 +617,13 @@ def _show_feature_sync_dialog(window: "ProblemsWindow", item: "ProblemItem") -> 
     dialog.add_response("cancel", "Cancel")
     dialog.add_response("clear", "Features Only in Default")
     dialog.add_response("copy", "Same Features Everywhere")
-    # Clearing is the safe half of the choice: the build reads the default's
-    # features either way, and copying can carry a file into a master that
-    # cannot parse it. It is only destructive when a master has features of its
-    # own that nothing else has.
-    if warnings:
-        dialog.set_response_appearance("clear", Adw.ResponseAppearance.SUGGESTED)
-        dialog.set_default_response("clear")
-    else:
-        dialog.set_response_appearance("copy", Adw.ResponseAppearance.SUGGESTED)
-        dialog.set_default_response("copy")
-    if differing:
-        dialog.set_response_appearance("clear", Adw.ResponseAppearance.DESTRUCTIVE)
+    # Clearing is the safe half of the choice, always: the build reads the
+    # default's features either way, while copying can carry a file into a
+    # master that cannot parse it -- on the family this was written for it
+    # turned one problem into twelve unparsable feature files. So it is the
+    # suggested action even when this particular designspace shows no warning.
+    dialog.set_response_appearance("clear", Adw.ResponseAppearance.SUGGESTED)
+    dialog.set_default_response("clear")
     dialog.set_close_response("cancel")
 
     def on_response(_dlg, response):
