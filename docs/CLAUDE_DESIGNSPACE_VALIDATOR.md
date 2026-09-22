@@ -112,7 +112,9 @@ gives 125 and 1.0 gives 100. The font builds without a word. Axes are judged
 one at a time, so a missing corner master in a two-axis space is fine.
 
 `axis_span.py` is deliberately free of GTK and of `font_rover` imports: it is
-the first piece written for the eventual standalone package.
+the first piece written for the eventual standalone package, which will be
+called **`designspace-lint`** (name free on PyPI as of 2026-09-22). Only the
+checks travel there; the fixes and this window stay in font-rover.
 
 ### Location Patterns
 
@@ -265,13 +267,42 @@ window.present()
 window.run_check()
 ```
 
+The window is titled **DesignSpace Validator** (the class keeps its older
+name). The editor's toolbar button says the same.
+
 ### Features
 
 - **ColumnView** with sortable columns (Category, Glyph, Location, Description)
+- **Fixable column** — a narrow icon column (`fr-auto-fix-symbolic`) marking
+  the rows this window can fix itself, driven by `fixes.get_fix()`, so a fix
+  added to the table shows up in the list without touching the window
 - **Filter popover** by category/subcategory
-- **Double-click navigation** to source or glyph
+- **Double-click navigation** to source or glyph — or, on a fixable row, the
+  fix dialog
 - **Recheck Selected** for partial validation
 - **Copy to clipboard** for bug reports
+
+### Auto-fixes (`fixes.py`)
+
+A fix is `fix_xxx(window, item)` registered in `FIXES` under
+`(category, error_code)`. All three ask before they act, mark the fonts dirty,
+publish an event and re-run the check; none of them saves a UFO.
+
+| Problem | Fix |
+|---|---|
+| 9.3 glyphOrder differs | Sync from a reference master |
+| 5.7 group members sorted differently | Sort from a reference master |
+| 8.3 features.fea is mixed | Features only in the default, or the same features everywhere |
+
+The features fix (`fix_features_mismatch` + the GTK-free planner in
+`feature_sync.py`) offers both states ufo2ft accepts. **Clearing is the safe
+half**: the build reads the default's features either way, while copying can
+carry a file into a master that cannot parse it. On an 84-master family,
+"same features everywhere" turned one problem into twelve `8.0 features file
+corrupt` rows, because the shared file names glyphs the sparse masters do not
+have. The dialog therefore checks for masters with fewer glyphs (and for
+relative `include()` paths landing in another folder), warns, and makes
+clearing the default button when it finds either.
 
 ### Double-Click Behavior
 

@@ -166,7 +166,7 @@ class ProblemsWindow(Adw.Window):
 
     def _setup_window(self) -> None:
         """Configure window properties."""
-        self.set_title("DesignSpace Problems")
+        self.set_title("DesignSpace Validator")
         self.set_default_size(750, 500)
         # Not modal, not transient - independent window
 
@@ -200,13 +200,13 @@ class ProblemsWindow(Adw.Window):
 
         self._filter_btn = Gtk.MenuButton()
         self._filter_btn.set_icon_name("fr-instant-mix-symbolic")
-        self._filter_btn.set_tooltip_text("Filter Problems")
+        self._filter_btn.set_tooltip_text("Filter")
         self._filter_btn.set_popover(self._filter_popover)
         header.pack_start(self._filter_btn)
 
         # Title with designspace name
         ds_name = self._designspace.path.stem if self._designspace else "Unknown"
-        title_label = Gtk.Label(label=f"Problems — {ds_name}")
+        title_label = Gtk.Label(label=f"Validator — {ds_name}")
         title_label.add_css_class("title")
         header.set_title_widget(title_label)
 
@@ -317,6 +317,7 @@ class ProblemsWindow(Adw.Window):
 
         # Create columns
         self._add_severity_column()
+        self._add_fixable_column()
         self._add_category_column()
         self._add_subcategory_column()
         self._add_description_column()
@@ -336,6 +337,25 @@ class ProblemsWindow(Adw.Window):
 
         # Custom sorter
         sorter = Gtk.CustomSorter.new(self._compare_severity)
+        column.set_sorter(sorter)
+
+        self._column_view.append_column(column)
+
+    def _add_fixable_column(self) -> None:
+        """Add the column that marks rows this window can fix itself.
+
+        Whether a problem has a fix was only discoverable by double-clicking it
+        and seeing what happened. One narrow column answers it for every fix
+        there is now and every one added later.
+        """
+        factory = Gtk.SignalListItemFactory()
+        factory.connect("setup", self._on_fixable_setup)
+        factory.connect("bind", self._on_fixable_bind)
+
+        column = Gtk.ColumnViewColumn(title="", factory=factory)
+        column.set_fixed_width(32)
+
+        sorter = Gtk.CustomSorter.new(self._compare_fixable)
         column.set_sorter(sorter)
 
         self._column_view.append_column(column)
@@ -414,6 +434,25 @@ class ProblemsWindow(Adw.Window):
         elif item.severity == SEVERITY_DESIGN:
             image.add_css_class("warning")
 
+    def _on_fixable_setup(self, factory, list_item):
+        image = Gtk.Image()
+        image.set_pixel_size(16)
+        list_item.set_child(image)
+
+    def _on_fixable_bind(self, factory, list_item):
+        from .fixes import get_fix
+
+        item: ProblemItem = list_item.get_item()
+        image: Gtk.Image = list_item.get_child()
+        if get_fix(item) is not None:
+            image.set_from_icon_name("fr-auto-fix-symbolic")
+            image.set_tooltip_text("Double-click to fix")
+            image.add_css_class("accent")
+        else:
+            image.clear()
+            image.set_tooltip_text(None)
+            image.remove_css_class("accent")
+
     def _on_category_setup(self, factory, list_item):
         label = Gtk.Label(xalign=0)
         list_item.set_child(label)
@@ -485,11 +524,10 @@ class ProblemsWindow(Adw.Window):
         else:
             group_label.set_visible(False)
 
-        # Mark row as actionable for visual feedback
-        if self._has_action_for_item(item):
-            box.add_css_class("problem-actionable")
-        else:
-            box.remove_css_class("problem-actionable")
+        # A "problem-actionable" css class used to be set here for visual
+        # feedback, but style.css never defined it, so it drew nothing for its
+        # whole life. What it was meant to say -- "this row does something" --
+        # the fixable column now says with an icon.
 
         # Set tooltip with details
         if item.details:
@@ -527,6 +565,16 @@ class ProblemsWindow(Adw.Window):
         elif item_a.severity > item_b.severity:
             return 1
         return 0
+
+    def _compare_fixable(self, item_a: ProblemItem, item_b: ProblemItem, user_data) -> int:
+        """Sort the rows this window can fix to the top, so they group."""
+        from .fixes import get_fix
+
+        a = get_fix(item_a) is not None
+        b = get_fix(item_b) is not None
+        if a == b:
+            return 0
+        return -1 if a else 1
 
     def _compare_category(self, item_a: ProblemItem, item_b: ProblemItem, user_data) -> int:
         if item_a.category < item_b.category:
@@ -757,10 +805,10 @@ class ProblemsWindow(Adw.Window):
         disabled_count = self._filter_state.get_disabled_count()
         if disabled_count > 0:
             self._filter_btn.add_css_class("suggested-action")
-            self._filter_btn.set_tooltip_text(f"Filter Problems ({disabled_count} hidden)")
+            self._filter_btn.set_tooltip_text(f"Filter ({disabled_count} hidden)")
         else:
             self._filter_btn.remove_css_class("suggested-action")
-            self._filter_btn.set_tooltip_text("Filter Problems")
+            self._filter_btn.set_tooltip_text("Filter")
 
     # --- Actions ---
 
@@ -1563,7 +1611,7 @@ class ProblemsWindow(Adw.Window):
         lines = []
 
         # Header
-        lines.append("=== DesignSpace Problems Report ===")
+        lines.append("=== DesignSpace Validator Report ===")
         lines.append(str(self._designspace.path))
         lines.append(f"{len(self._problems)} problems found")
         lines.append("")

@@ -66,7 +66,7 @@ class FilterPopover(Gtk.Popover):
         header_box.set_margin_start(12)
         header_box.set_margin_end(12)
 
-        title_label = Gtk.Label(label="Filter Problems")
+        title_label = Gtk.Label(label="Filter")
         title_label.add_css_class("heading")
         title_label.set_hexpand(True)
         title_label.set_xalign(0)
