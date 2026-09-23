@@ -204,12 +204,19 @@ class SourcesChecker(BaseChecker):
         """Check source location is valid for all axes."""
         location = source.location
 
-        for axis_name, info in axis_info.items():
-            # Check 2.3: Location has value for this axis
-            if axis_name not in location:
+        # 2.3 used to fire when a source did not name every axis. That is not
+        # an error: designspace 5 lets a source list only the axes it is not
+        # default on, and fontTools fills in the rest (`getFullDesignLocation`,
+        # which `findDefault` itself relies on). Amstelvar A2 has 93 axes and
+        # each source names a handful, so the old reading produced 1518
+        # structural errors and stopped the run before a single glyph was
+        # compared. What *is* an error is naming an axis the document does not
+        # have -- that value goes nowhere.
+        for axis_name in location:
+            if axis_name not in axis_info:
                 yield self._make_result(
                     code=SOURCE_LOCATION_MISSING_AXIS,
-                    description=f"Source location missing axis value: {axis_name}",
+                    description=f"Source location names an axis the designspace does not have: {axis_name}",
                     location=source_name,
                     is_structural=True,
                     raw_data={
@@ -218,7 +225,10 @@ class SourcesChecker(BaseChecker):
                         "location": location,
                     },
                 )
-                continue
+
+        for axis_name, info in axis_info.items():
+            if axis_name not in location:
+                continue  # omitted: the axis default applies
 
             # Check 2.4: Location value within axis range
             value = location[axis_name]

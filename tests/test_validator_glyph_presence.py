@@ -15,6 +15,7 @@ from designspace_lint.checkers.glyphs import (
     DEFAULT_GLYPH_EMPTY,
     GLYPH_AXIS_SPAN_GAP,
     GLYPH_EMPTY_IN_SOURCE,
+    GLYPH_STATIC,
     GlyphsChecker,
 )
 from fakes import FakeGlyph, build_designspace
@@ -124,6 +125,23 @@ def test_glyph_empty_in_every_master_is_fine():
     assert _codes(entry) == []
 
 
+def test_a_glyph_only_the_default_draws_is_static_not_a_gap():
+    """25 such glyphs in Amstelvar produced 150 axis-end errors meaning
+    "this glyph is static". They are one finding each now."""
+    entry = _weight_entry(
+        [
+            {"A": _drawn(), "B": _drawn("B")},  # default
+            {"A": _drawn(size=150)},
+            {"A": _drawn(size=200)},
+        ]
+    )
+
+    codes = _codes(entry)
+
+    assert (GLYPH_STATIC, "B") in codes
+    assert (GLYPH_AXIS_SPAN_GAP, "B") not in codes
+
+
 def test_sparse_in_the_name_no_longer_changes_anything():
     """The old heuristic would have silenced these two masters."""
     plain = _weight_entry(
@@ -153,7 +171,7 @@ def test_sparse_in_the_name_no_longer_changes_anything():
     )
 
     assert _codes(plain) == _codes(named)
-    assert (GLYPH_AXIS_SPAN_GAP, "B") in _codes(named)
+    assert (GLYPH_STATIC, "B") in _codes(named)
 
 
 def test_each_discrete_slice_is_judged_on_its_own():
@@ -178,6 +196,11 @@ def test_each_discrete_slice_is_judged_on_its_own():
                 "name": "Italic Light",
                 "location": {"Weight": 0, "Italic": 1},
                 "glyphs": {"A": _drawn(), "B": _drawn("B")},
+            },
+            {
+                "name": "Italic Medium",
+                "location": {"Weight": 50, "Italic": 1},
+                "glyphs": {"A": _drawn(size=150), "B": _drawn("B", size=150)},
             },
             {
                 "name": "Italic Bold",
@@ -229,5 +252,5 @@ def test_layer_masters_are_compared_on_their_own_layers():
 
     # A differs in contour count between the two layers ...
     assert any(glyph == "A" for _code, glyph in codes)
-    # ... and B, drawn only by the default layer, is missing at the Width end.
-    assert (GLYPH_AXIS_SPAN_GAP, "B") in codes
+    # ... and B, drawn only by the default layer, never varies.
+    assert (GLYPH_STATIC, "B") in codes

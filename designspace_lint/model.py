@@ -143,6 +143,12 @@ class CheckResult:
     is_structural: bool = False
     raw_data: dict = field(default_factory=dict)
 
+    # Usually the severity follows from the category and `is_structural`. A
+    # check that is right about a fact but knows the fact does not affect the
+    # build sets this instead of shouting: on a real family, one cosmetic
+    # check at design level buried the structural findings 20 to 1.
+    severity: int | None = None
+
     # Glyph diagnostics (optional, for detailed reports)
     problem_type: GlyphProblemType | None = None
     majority_sources: list[SourceInfo] = field(default_factory=list)

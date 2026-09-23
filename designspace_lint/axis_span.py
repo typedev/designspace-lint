@@ -104,6 +104,22 @@ def axis_span_gaps(doc, all_descriptors, covering_descriptors, tol: float = DEFA
         if not full or not covered:
             continue
 
+        # The glyph has to *vary* on this axis for a gap to mean anything.
+        # When all its masters sit at one coordinate, the glyph carries no
+        # delta along the axis and simply stays as it is -- there is nothing
+        # to fade out and nothing to revert to. It is the glyph that varies
+        # and then stops short whose deltas ramp back down to zero, taking it
+        # to the default master's shape.
+        #
+        # This is also what makes the check usable on a parametric family.
+        # Amstelvar's italic designspace has 91 axes, one per master, and each
+        # master redraws only the glyphs it needs; reading every untouched
+        # glyph as a gap produced 18609 findings that all meant "this master
+        # does not change this glyph", which is the entire point of the
+        # arrangement.
+        if max(covered) - min(covered) <= tol:
+            continue
+
         if min(covered) > min(full) + tol:
             gaps.append(AxisGap(name, "minimum", min(full), min(covered)))
         if max(covered) < max(full) - tol:

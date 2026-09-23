@@ -31,6 +31,8 @@ def _severity(problem) -> int:
         SEVERITY_INFO,
     )
 
+    if problem.severity is not None:
+        return problem.severity
     if problem.is_structural:
         return SEVERITY_STRUCTURAL
     if problem.category in (

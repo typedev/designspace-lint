@@ -76,15 +76,39 @@ def test_axes_are_judged_independently_so_a_corner_master_is_not_required():
 
 
 def test_a_source_that_omits_an_axis_sits_at_its_default():
+    """Designspace 5 lets a source name only the axes it is not default on."""
     doc = _doc(
-        [{"Weight": 0}, {"Weight": 100}, {}],  # the third names no axis at all
+        [{"Weight": 0}, {"Weight": 50}, {"Weight": 100}, {}],  # the last names no axis
     )
-    covering = [doc.sources[2]]  # only the implicit-default master has the glyph
+    # The glyph is in the implicit-default master (Weight 0) and the middle
+    # one, so it varies and stops short of 100.
+    covering = [doc.sources[3], doc.sources[1]]
 
     gaps = axis_span_gaps(doc, doc.sources, covering)
 
     assert {g.side for g in gaps} == {"maximum"}
-    assert gaps[0].covered == 0
+    assert gaps[0].covered == 50
+
+
+def test_a_glyph_that_does_not_vary_on_an_axis_has_no_gap_there():
+    """It carries no delta along the axis, so nothing fades out.
+
+    This is what a parametric family looks like: one axis per master, each
+    master redrawing only the glyphs it changes. Reading every untouched glyph
+    as a gap produced 18609 findings on Amstelvar's italic sources.
+    """
+    doc = _doc(
+        [{"Weight": 0, "Width": 0}, {"Weight": 100, "Width": 0}, {"Weight": 0, "Width": 100}],
+        axes=[
+            {"name": "Weight", "tag": "wght", "minimum": 0, "default": 0, "maximum": 100},
+            {"name": "Width", "tag": "wdth", "minimum": 0, "default": 0, "maximum": 100},
+        ],
+    )
+    # Present in the default and in the Weight master: it varies on Weight and
+    # reaches its end; on Width every master it has sits at 0.
+    covering = [doc.sources[0], doc.sources[1]]
+
+    assert axis_span_gaps(doc, doc.sources, covering) == []
 
 
 def test_a_single_covering_master_in_a_one_master_space_has_no_gap():

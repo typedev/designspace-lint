@@ -24,7 +24,8 @@ from __future__ import annotations
 import logging
 from typing import Iterator
 
-from ..model import CATEGORY_KERNING, CheckResult
+from ..kerning_data import safe_kerning
+from ..model import CATEGORY_KERNING, SEVERITY_INFO, CheckResult
 from .base import BaseChecker
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,7 @@ NO_KERNING_GROUPS_DEFAULT = 5  # 5,5
 NO_KERNING_GROUPS_SOURCE = 6  # 5,6
 KERNING_GROUP_SORTED_DIFF = 7  # 5,7 - members sorted differently
 GLYPH_IN_TWO_KERN_GROUPS = 8  # 5,8 - ours: a glyph in two groups of one side
+KERNING_KEY_MALFORMED = 9  # 5,9 - ours: a key a UFO reader refuses
 
 
 class KerningChecker(BaseChecker):
@@ -82,16 +84,18 @@ class KerningChecker(BaseChecker):
         if not sources:
             return
 
-        # Check if there is ANY kerning in the designspace
-        # If no kerning anywhere, assume intentional and skip
-        has_any_kerning = False
+        # Read every master's kerning once, going around fontParts when it
+        # refuses a file outright -- a malformed key is a finding, not a
+        # reason to lose the whole category.
+        pairs_by_source = {}
         for source in sources:
-            if len(source.font.kerning.items()) > 0:
-                has_any_kerning = True
-                break
+            pairs, malformed = safe_kerning(source.font)
+            pairs_by_source[id(source)] = pairs
+            if malformed:
+                yield self._malformed_key_result(source, malformed)
 
-        if not has_any_kerning:
-            return
+        if not any(pairs_by_source.values()):
+            return  # no kerning anywhere: assume that is intentional
 
         # Find default source
         default_source = self._default_font_source(sources=sources)
@@ -100,11 +104,12 @@ class KerningChecker(BaseChecker):
 
         default_font = default_source.font
         default_name = self._label(default_source)
+        default_pairs = pairs_by_source.get(id(default_source), {})
 
         yield from self._check_group_overlaps(sources)
 
         # 5,1: No kerning in default
-        if len(default_font.kerning.items()) == 0:
+        if not default_pairs:
             yield self._make_result(
                 code=NO_KERNING_IN_DEFAULT,
                 description="no kerning in default",
@@ -141,7 +146,7 @@ class KerningChecker(BaseChecker):
                 for name, members in source_font.groups.items()
                 if name.startswith("public.kern")
             }
-            has_kerning = len(source_font.kerning.keys()) > 0
+            source_pairs = pairs_by_source.get(id(source), {})
 
             # 5,0: no kerning at all in a full UFO master, while the default
             # has some. ufo2ft asks THIS master for every pair the designspace
@@ -153,7 +158,7 @@ class KerningChecker(BaseChecker):
             # the value lookup goes to this master's own kerning either way.
             # A master meant to correct outlines only belongs in a layer of a
             # full UFO, which ufo2ft skips for kerning.
-            if not has_kerning and len(default_font.kerning.keys()) > 0:
+            if not source_pairs and default_pairs:
                 yield self._make_result(
                     code=NO_KERNING_IN_SOURCE,
                     description="no kerning: the family's kerning sags to 0 here",
@@ -162,7 +167,7 @@ class KerningChecker(BaseChecker):
                     details=(
                         f"{source_name} has no kerning pairs"
                         + ("" if source_groups else " and no kerning groups")
-                        + f", while the default has {len(default_font.kerning.keys())} pairs. "
+                        + f", while the default has {len(default_pairs)} pairs. "
                         f"Every pair resolves to 0 at this master and interpolates toward zero "
                         f"around it. Give it the kerning, or make it a layer of a full UFO -- "
                         f"ufo2ft skips layer sources for kerning."
@@ -210,8 +215,13 @@ class KerningChecker(BaseChecker):
                         if sorted(source_members) == sorted(default_members):
                             # 5,7: Same members but sorted differently
                             details = f"{group_name}: {source_members}, {default_members}"
+                            # ufo2ft sorts a group's members before using them
+                            # (`tuple(sorted(members))`), so the order never
+                            # reaches the build. Worth knowing when reading a
+                            # diff of groups.plist; not worth an alarm.
                             yield self._make_result(
                                 code=KERNING_GROUP_SORTED_DIFF,
+                                severity=SEVERITY_INFO,
                                 description=f"kerning group members sorted differently: {group_name}",
                                 location=source_name,
                                 group_name=group_name,
@@ -241,6 +251,30 @@ class KerningChecker(BaseChecker):
                                     "defaultMembers": default_members,
                                 },
                             )
+
+    def _malformed_key_result(self, source, malformed) -> CheckResult:
+        """5,9: a kerning key no UFO reader will accept.
+
+        An empty glyph or group name on either side of a pair. fontParts
+        refuses the whole kerning object rather than the one pair, so until
+        this is repaired the master's kerning does not reach the compiler at
+        all -- and nothing says so.
+        """
+        shown = ", ".join(repr(k) for k in malformed[:3])
+        more = len(malformed) - min(3, len(malformed))
+        return self._make_result(
+            code=KERNING_KEY_MALFORMED,
+            description=f"{len(malformed)} malformed kerning key(s): the file will not load",
+            location=self._label(source),
+            is_structural=True,
+            details=(
+                f"{shown}" + (f" (+{more} more)" if more else "") + ". A kerning key with an "
+                "empty side makes fontParts refuse the whole kerning object, so this master's "
+                "kerning is lost on the way to the compiler. The pairs that can be read were "
+                "still checked."
+            ),
+            raw_data={"font": self._label(source), "keys": [list(k) for k in malformed[:20]]},
+        )
 
     def _check_group_overlaps(self, sources) -> Iterator[CheckResult]:
         """5,8: a glyph in two kerning groups of the same side.

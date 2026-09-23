@@ -57,6 +57,7 @@ DIFFERENT_UNICODES = 10  # different unicodes in glyph
 # only ever added, never reused.
 GLYPH_AXIS_SPAN_GAP = 11  # glyph does not reach one end of an axis
 GLYPH_EMPTY_IN_SOURCE = 12  # glyph empty in one master, drawn in others
+GLYPH_STATIC = 13  # drawn only in the default master, so it never varies
 
 # Minimum area threshold to consider direction meaningful
 MIN_AREA_THRESHOLD = 1000
@@ -304,6 +305,13 @@ class GlyphsChecker(BaseChecker):
         of an axis is not: past the glyph's last master the variation dies away
         and the glyph falls back to the default master's shape, while its
         neighbours keep changing. Nothing in the build warns about it.
+
+        A glyph drawn *only* in the default master is a different thing and is
+        not reported: it does not vary at all, which is what `.notdef`, `.null`
+        and composed-accent helpers are for. There is nothing to fall back to
+        -- the shape it would revert to is the one it already has. Amstelvar's
+        reference sources have 25 such glyphs, and reporting them once per
+        axis end produced 150 findings that all meant "this glyph is static".
         """
         from ..axis_span import axis_span_gaps
 
@@ -312,6 +320,11 @@ class GlyphsChecker(BaseChecker):
         covering_descs = [d for d, source in pairs if id(source) in present_ids]
         if len(covering_descs) == len(all_descs):
             return  # every master draws it; nothing to span-check
+        if len(covering_descs) < 2:
+            # Drawn only in the default: it does not vary anywhere, which is
+            # one fact about the glyph rather than one per axis end.
+            yield self._static_glyph_result(glyph_name, pairs, present_in)
+            return
 
         for gap in axis_span_gaps(sub_doc, all_descs, covering_descs):
             end = "maximum" if gap.side == "maximum" else "minimum"
@@ -343,6 +356,33 @@ class GlyphsChecker(BaseChecker):
                     "missingIn": missing_in,
                 },
             )
+
+    def _static_glyph_result(self, glyph_name, pairs, present_in) -> CheckResult:
+        """4.13: the glyph is drawn only in the default master.
+
+        It will be the same shape at every location, while everything around
+        it changes. For `.notdef`, `.null` or a composed-accent helper that is
+        exactly right; for a letter it means somebody drew it once and moved
+        on. The checks cannot tell those apart, so this is information rather
+        than a fault -- but it is reported, because the second case looks like
+        nothing at all until the variable font is used.
+        """
+        drawn_in = self._label(present_in[0]) if present_in else ""
+        return self._make_result(
+            code=GLYPH_STATIC,
+            description="drawn only in the default master: it will not vary",
+            glyph_name=glyph_name,
+            location=drawn_in.replace(".ufo", ""),
+            is_structural=False,
+            details=(
+                f"Glyph '{glyph_name}' exists in {drawn_in} and in none of the other "
+                f"{max(len(pairs) - 1, 0)} masters, so it keeps that shape everywhere in the "
+                f"space. Intentional for .notdef and helper glyphs; an oversight for anything "
+                f"meant to be drawn."
+            ),
+            problem_type=GlyphProblemType.MISSING_GLYPH,
+            raw_data={"glyphName": glyph_name, "locationType": "binary", "presentIn": [drawn_in]},
+        )
 
     def _empty_glyph_results(self, glyph_name, drawn, empty) -> Iterator[CheckResult]:
         """4.12: the glyph is drawn in some masters and left empty in others.

@@ -93,6 +93,19 @@ assumed, and several of them contradict what seems reasonable:
 - Sparse masters need no naming convention. Which masters a glyph may skip
   follows from the axes; which sources carry kerning, features and a glyph
   order of their own follows from whether they are layers.
+- A gap at the end of an axis only counts when the glyph **varies** on that
+  axis. One that sits at a single coordinate carries no delta along it, so
+  nothing fades out — that is a parametric family's normal arrangement, and a
+  glyph drawn only in the default master is reported once as static (4.13)
+  rather than once per axis end.
+- A designspace 5 source may name only the axes it is not default on; that is
+  not a missing value.
+
+Each of those last two was learned the hard way, by running this over
+[Amstelvar](https://github.com/googlefonts/amstelvar-avar2) — 91–93 axes, up to
+150 masters — where the earlier readings produced 1518 and 18609 findings that
+all meant "this is how a parametric family is built". See the changelog for
+0.1.1.
 
 ## Relation to designspaceProblems
 
