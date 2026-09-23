@@ -254,3 +254,29 @@ def test_layer_masters_are_compared_on_their_own_layers():
     assert any(glyph == "A" for _code, glyph in codes)
     # ... and B, drawn only by the default layer, never varies.
     assert (GLYPH_STATIC, "B") in codes
+
+
+def test_contour_and_point_differences_are_reported():
+    """4.0/4.3/4.4/4.5 -- the checks that silently stopped working.
+
+    They read a DigestPointStructurePen digest and matched on item shapes that
+    fontPens changed between 0.2 and 0.4: against the newer one the parser
+    found no contours, so four checks reported nothing at all, with no error to
+    show for it. Nothing in the suite noticed, because nothing asserted them.
+    They read the glyph now, and this is the test that says so.
+    """
+    two_contours = FakeGlyph(
+        "A",
+        contours=[
+            [(0, 0), (100, 0), (100, 100), (0, 100)],
+            [(10, 10), (20, 10), (20, 20)],
+        ],
+    )
+    one_contour = FakeGlyph("A", contours=[[(0, 0), (100, 0), (100, 100), (0, 100)]])
+    more_points = FakeGlyph("A", contours=[[(0, 0), (50, 0), (100, 0), (100, 100), (0, 100)]])
+
+    entry = _weight_entry([{"A": one_contour}, {"A": more_points}, {"A": two_contours}])
+    codes = {code for code, _glyph in _codes(entry)}
+
+    assert 0 in codes, "contour count difference (4.0) not reported"
+    assert 3 in codes, "on-curve count difference (4.3) not reported"

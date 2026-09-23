@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-09-23
+
+### Fixed
+
+- **Four checks had silently stopped working against fontPens 0.4** (4.0
+  contour count, 4.3 on-curves, 4.4 off-curves, 4.5 curve type). They read a
+  `DigestPointStructurePen` digest and matched on `("beginPath", ...)` tuples;
+  fontPens 0.4 emits bare strings, so the parser found no contours and the
+  four checks reported nothing — no error, no warning, four checks quietly
+  doing nothing. They read the glyph directly now, which is simpler and not a
+  bet on another project's internal format. The digest is still used where it
+  belongs: as an opaque value for comparing structures (4.9).
+
+  Found by comparing a run inside a host application (fontPens 0.2.4) with a
+  run from the command line (0.4.0) over the same designspace: 2013 findings
+  against 1821. The suite passed either way, because nothing asserted those
+  four codes. Something does now.
+
 ## [0.1.1] - 2026-09-23
 
 Found by running 0.1.0 over [Amstelvar](https://github.com/googlefonts/amstelvar-avar2),

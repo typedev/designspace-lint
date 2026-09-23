@@ -106,30 +106,36 @@ def format_binary_location(present_in: list[str], missing_in: list[str]) -> str:
     return f"missing in {len(missing_in)} sources"
 
 
-def parse_digest_contours(digest: tuple) -> list[dict]:
+def glyph_contour_stats(glyph) -> list[dict]:
     """
-    Parse a DigestPointStructurePen digest into per-contour statistics.
+    Per-contour statistics, read from the glyph itself.
 
     Returns a list of dicts, one per contour:
         {'on_curves': int, 'off_curves': int, 'types': tuple}
+
+    This used to parse a DigestPointStructurePen digest, whose items were
+    ``("beginPath", ...)`` tuples in fontPens 0.2 and are bare strings in 0.4.
+    The parser matched on the tuple form, so against the newer fontPens it
+    found no contours at all and the contour-count and point-count checks
+    (4.0, 4.3, 4.4, 4.5) silently reported nothing -- no error, no warning,
+    just four checks quietly doing nothing. Reading the glyph is both simpler
+    and not a bet on another project's internal format; the digest is still
+    used where it belongs, as an opaque value to compare structures with.
     """
-    contours = []
-    current = None
-    for item in digest:
-        if isinstance(item, tuple) and item[0] == "beginPath":
-            current = {"on_curves": 0, "off_curves": 0, "types": []}
-        elif item == "endPath":
-            if current is not None:
-                current["types"] = tuple(current["types"])
-                contours.append(current)
-            current = None
-        elif current is not None:
-            if item is None:
-                current["off_curves"] += 1
+    stats = []
+    for contour in glyph.contours:
+        on_curves = 0
+        off_curves = 0
+        types = []
+        for point in contour.points:
+            point_type = getattr(point, "type", None)
+            if point_type == "offcurve" or point_type is None:
+                off_curves += 1
             else:
-                current["on_curves"] += 1
-                current["types"].append(item)
-    return contours
+                on_curves += 1
+                types.append(point_type)
+        stats.append({"on_curves": on_curves, "off_curves": off_curves, "types": tuple(types)})
+    return stats
 
 
 class GlyphsChecker(BaseChecker):
@@ -479,11 +485,9 @@ class GlyphsChecker(BaseChecker):
             # Collect pattern with source names
             patterns[digest].append(source_name)
 
-            # Count contours from digest and track sources
-            contour_count = 0
-            for item in digest:
-                if isinstance(item, tuple) and item[0] == "beginPath":
-                    contour_count += 1
+            # Count contours from the glyph, not from the digest: the
+            # digest's shape is fontPens' business and it changed under us.
+            contour_count = len(glyph.contours)
             contour_count_sources[contour_count].append(source_name)
 
             # Collect components with sources
@@ -501,7 +505,7 @@ class GlyphsChecker(BaseChecker):
 
             # Parse contour stats for detailed checks (only if needed)
             if digest not in contour_stats:
-                contour_stats[digest] = parse_digest_contours(digest)
+                contour_stats[digest] = glyph_contour_stats(glyph)
 
             # Collect contour directions
             directions = tuple(self._get_contour_direction(c) for c in glyph.contours)
