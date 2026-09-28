@@ -25,6 +25,10 @@ What the build does with a mapping, verified against fontTools 4.65:
   output past the outermost master on that side of an axis moves nothing, or
   rolls back toward the default as the last master's support tapers off.
 
+- Nothing requires the result to be monotonic. A mapping that sends a visible
+  axis backwards makes the font move the wrong way as the user drags it --
+  legitimate for a hidden parametric axis, a mistake for one people see.
+
 1.18 (a mapping from the default location) lives in `axes.py`; these follow it.
 """
 
@@ -44,6 +48,11 @@ AVAR2_VALUE_CLAMPED = 25
 AVAR2_PAST_THE_MASTERS = 26
 AVAR2_CHAINED = 27
 AVAR2_UNDRIVEN_HIDDEN_AXIS = 28
+AVAR2_NOT_MONOTONIC = 29
+
+# Where a visible axis is sampled for 1.29, in normalized coordinates; each
+# mapping's own input is added, since that is where a remap bends.
+SAMPLES = [i / 20 for i in range(-20, 21)]
 
 # Normalized coordinates compare exactly in fontTools; this only absorbs the
 # float noise of our own arithmetic.
@@ -86,6 +95,7 @@ class Avar2Checks:
         yield from self._avar2_past_the_masters(doc, mappings, triples)
         yield from self._avar2_chained(mappings, triples)
         yield from self._avar2_undriven_hidden(doc, mappings, triples)
+        yield from self._avar2_not_monotonic(doc, mappings, triples)
 
     # --- 1.24 ------------------------------------------------------------
 
@@ -335,3 +345,105 @@ class Avar2Checks:
                 severity=SEVERITY_INFO,
                 raw_data={"axisName": axis.name, "masters": len(off_default)},
             )
+
+    # --- 1.29 ------------------------------------------------------------
+
+    def _avar2_not_monotonic(self, doc, mappings, triples) -> Iterator[CheckResult]:
+        """A visible axis that avar2 makes run backwards somewhere along it.
+
+        Decided on the table varLib would build: the avar is compiled in memory
+        from the document alone and each visible axis some mapping writes to is
+        sampled with the others at their defaults. Only built when there is
+        such an axis, so documents that drive hidden axes only pay nothing.
+        """
+        visible = {
+            axis.name: axis
+            for axis in doc.axes
+            if axis.name in triples and not getattr(axis, "hidden", False)
+        }
+        targets = [
+            name for name in visible if any(name in (m.outputLocation or {}) for m in mappings)
+        ]
+        if not targets:
+            return
+        kept = [
+            m
+            for m in mappings
+            if all(
+                name in triples
+                for name in list(m.inputLocation or {}) + list(m.outputLocation or {})
+            )
+        ]
+        avar, font = _build_avar(doc, kept)
+        if avar is None:
+            return  # the build would fail anyway (1.23); nothing to sample
+
+        for name in targets:
+            axis = visible[name]
+            points = set(SAMPLES)
+            for m in kept:
+                if name in (m.inputLocation or {}):
+                    points.add(normalizeValue(m.inputLocation[name], triples[name]))
+            points = sorted(p for p in points if -1.0 <= p <= 1.0)
+            previous = None
+            for point in points:
+                try:
+                    value = avar.renormalizeLocation({axis.tag: point}, font, dropZeroes=False).get(
+                        axis.tag, point
+                    )
+                except Exception:  # pragma: no cover - defensive
+                    return
+                if previous is not None and value < previous[1] - 1e-6:
+                    start, end = previous[0], point
+                    yield self._make_result(
+                        code=AVAR2_NOT_MONOTONIC,
+                        description=(
+                            f"avar2 makes {name} run backwards between "
+                            f"{_num(_user(axis, start))} and {_num(_user(axis, end))}"
+                        ),
+                        location=f"axis: {name}",
+                        details=(
+                            f"Moving {name} from {_num(_user(axis, start))} to "
+                            f"{_num(_user(axis, end))} moves the font from "
+                            f"{previous[1]:.3f} back to {value:.3f} (normalized). Nothing in "
+                            f"the build objects; on a visible axis the font moves the wrong "
+                            f"way as it is dragged."
+                        ),
+                        is_structural=False,
+                        severity=SEVERITY_DESIGN,
+                        raw_data={"axisName": name, "from": start, "to": end},
+                    )
+                    break
+                previous = (point, value)
+
+
+def _user(axis, normalized: float) -> float:
+    """A normalized coordinate back on the axis' user scale."""
+    if normalized >= 0:
+        return axis.default + normalized * (axis.maximum - axis.default)
+    return axis.default + normalized * (axis.default - axis.minimum)
+
+
+def _build_avar(doc, mappings):
+    """The avar table varLib would build for these axes and mappings, or None."""
+    import logging
+    from collections import OrderedDict
+
+    from fontTools.ttLib import TTFont, newTable
+    from fontTools.varLib import _add_avar, _add_fvar
+
+    axes = OrderedDict((a.name, a) for a in doc.axes if not getattr(a, "values", None))
+    font = TTFont()
+    font["name"] = newTable("name")
+    font["name"].names = []
+    varlib_log = logging.getLogger("fontTools.varLib")
+    level = varlib_log.level
+    varlib_log.setLevel(logging.WARNING)
+    try:
+        _add_fvar(font, axes, [])
+        _add_avar(font, axes, mappings, [a.tag for a in axes.values()])
+    except Exception:
+        return None, None
+    finally:
+        varlib_log.setLevel(level)
+    return font.get("avar"), font

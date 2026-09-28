@@ -28,7 +28,7 @@ Checks:
 - 1.20: Variable font selects a range over a discrete axis
 - 1.21: Variable font subset selects nothing on its axis
 - 1.22: Variable font default of 0 that fontTools reads as "not set"
-- 1.23-1.28: avar2 mappings, see `avar2.py`
+- 1.23-1.29: avar2 mappings, see `avar2.py`
 
 Copyright 2024-2026 TypeDev
 Licensed under the Apache License, Version 2.0

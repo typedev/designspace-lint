@@ -36,7 +36,7 @@ Amstelvar A2 designspaces for avar2, and 72 local DS5 files with labels.
     ital/slnt axis with no links while instances depend on the labels for
     style linking.
   - **10.7**: two labels at one value, and a discrete value without a label.
-- **1.23–1.28, avar2 mappings.**
+- **1.23–1.29, avar2 mappings.**
   - **1.23**: two mappings whose inputs normalize to the same point. varLib
     stops with "Locations must be unique". That includes two default-input
     mappings on different axes.
@@ -52,6 +52,12 @@ Amstelvar A2 designspaces for avar2, and 72 local DS5 files with labels.
     evaluated before avar2 applies, so the chain never fires.
   - **1.28**: a hidden axis with masters that no mapping touches
     (information).
+  - **1.29**: a visible axis that avar2 makes run backwards somewhere along
+    it. This is decided on the avar table itself, compiled in memory from the
+    document, and only when some mapping writes to a visible axis. Hidden
+    parametric axes may go back and forth.
+- **README: "What it does not see"**, the things that only a built font
+  shows: generated features, compiled-table limits, renderers, muting.
 
 ### Changed
 

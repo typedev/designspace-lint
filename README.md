@@ -158,6 +158,32 @@ Each of those last two was learned the hard way, by running this over
 all meant "this is how a parametric family is built". See the changelog for
 0.1.1.
 
+### What it does not see
+
+It never compiles anything, so whatever exists only in the built font is out
+of reach. The September 2026 coverage audit (`docs/audit/`) sorted these out;
+the main ones:
+
+- **Features ufo2ft writes for you.** `kern`, `mark` and `mkmk` are generated
+  from kerning and anchors at build time. Category 8 compares the masters'
+  `features.fea` text and cannot see what the writers would add or where
+  they would disagree across masters.
+- **What only the compiled tables show**: lookup overflows and table sizes,
+  TrueType hinting, name-table ID reuse, and the order the shaper applies
+  feature variations in beyond what 7.7 predicts.
+- **Renderers.** avar2 is new; an engine that only reads avar1 ignores the
+  whole table. Whether a given app or instancer handles a font correctly is
+  not a property of the designspace.
+- **Muting.** `mutedGlyphNames`, `muteKerning` and `muteInfo` on instances
+  are not taken into account.
+- **Point correspondence** only with `--interpolatable`. Even then, component
+  transforms are compared by structure, not by what they do between masters.
+- **Masters that could not be opened.** They are reported (2.1) and left
+  out; checks that measure extents, such as 4.11, then measure without them.
+
+For those, build the font (fontmake, or `fonttools varLib`) and run
+`varLib.interpolatable` and your shaping tests on the result.
+
 ## Relation to designspaceProblems
 
 This started as a reimplementation of

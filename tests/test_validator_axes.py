@@ -26,6 +26,7 @@ from designspace_lint.checkers.axes import (
 from designspace_lint.checkers.avar2 import (
     AVAR2_CHAINED,
     AVAR2_DUPLICATE_INPUT,
+    AVAR2_NOT_MONOTONIC,
     AVAR2_PAST_THE_MASTERS,
     AVAR2_UNDRIVEN_HIDDEN_AXIS,
     AVAR2_UNKNOWN_AXIS,
@@ -272,3 +273,32 @@ def test_a_chain_of_mappings_is_reported():
 def test_a_hidden_axis_no_mapping_touches_is_noted():
     codes = _avar2_codes(_mapping({"Weight": 900}, {"Width": 150}), sources=WIDE_AND_HIDDEN)
     assert codes == [AVAR2_UNDRIVEN_HIDDEN_AXIS]
+
+
+def test_a_visible_axis_remapped_backwards_is_reported():
+    """Weight 650 -> 300: dragging from 400 towards 650 makes the font lighter.
+
+    Built with fontTools 4.65: normalized 0.25 and 0.5 come out at -0.17 and
+    -0.33, then 0.75 at +0.33.
+    """
+    results = [
+        r
+        for r in _results(_avar2_doc(_mapping({"Weight": 650}, {"Weight": 300})))
+        if r.code == AVAR2_NOT_MONOTONIC
+    ]
+    assert len(results) == 1
+    assert results[0].raw_data["axisName"] == "Weight"
+
+
+def test_a_forward_remap_of_a_visible_axis_is_fine():
+    codes = _avar2_codes(_mapping({"Weight": 650}, {"Weight": 800}))
+    assert AVAR2_NOT_MONOTONIC not in codes
+
+
+def test_a_hidden_axis_may_run_any_way_it_likes():
+    """Parametric axes go back and forth by design; only visible ones are checked."""
+    codes = _avar2_codes(
+        _mapping({"Weight": 650}, {"Hid": 100}),
+        _mapping({"Weight": 900}, {"Hid": 20}),
+    )
+    assert AVAR2_NOT_MONOTONIC not in codes
