@@ -24,6 +24,11 @@ def _resolve_cached(raw: str) -> Path:
         return Path(raw)
 
 
+def format_value(value) -> str:
+    """A coordinate as it would be written: 400, not 400.0."""
+    return str(int(value)) if float(value).is_integer() else f"{value:g}"
+
+
 if TYPE_CHECKING:
     from fontTools.designspaceLib import DesignSpaceDocument
 

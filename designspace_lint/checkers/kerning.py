@@ -25,7 +25,7 @@ import logging
 from typing import Iterator
 
 from ..kerning_data import safe_kerning
-from ..model import CATEGORY_KERNING, SEVERITY_INFO, CheckResult
+from ..model import CATEGORY_KERNING, SEVERITY_DESIGN, SEVERITY_INFO, CheckResult
 from .base import BaseChecker
 
 logger = logging.getLogger(__name__)
@@ -149,28 +149,32 @@ class KerningChecker(BaseChecker):
             source_pairs = pairs_by_source.get(id(source), {})
 
             # 5,0: no kerning at all in a full UFO master, while the default
-            # has some. ufo2ft asks THIS master for every pair the designspace
-            # kerns, finds nothing and uses 0, so the kerning of the whole
-            # family sags toward zero around this master's location -- in the
-            # built font, silently. Measured on a two-master test: with -50 in
-            # the default and nothing here, the midpoint gets -25 and this
-            # master 0. Carrying the groups without the pairs does not help;
-            # the value lookup goes to this master's own kerning either way.
-            # A master meant to correct outlines only belongs in a layer of a
-            # full UFO, which ufo2ft skips for kerning.
+            # has some. What the build makes of it depends on ufo2ft:
+            #   - up to 3.8, the variable kern writer asks THIS master for every
+            #     pair, finds nothing and uses 0, so the family's kerning sags
+            #     toward zero around it. Measured on two masters: -50 in the
+            #     default, nothing here, -25 at the midpoint and 0 here.
+            #   - since 3.9 (ufo2ft#995) the master is skipped for kerning and
+            #     the kerning interpolates across it, as if it were a layer.
+            # Groups without pairs change neither: 3.9 skips on empty kerning,
+            # and before it the lookup went to this master's own pairs. Either
+            # way the master contributes no kerning of its own, which is worth
+            # knowing, and on older toolchains it is still the old failure.
             if not source_pairs and default_pairs:
                 yield self._make_result(
                     code=NO_KERNING_IN_SOURCE,
-                    description="no kerning: the family's kerning sags to 0 here",
+                    description="no kerning: this master takes no part in the family's kerning",
                     location=source_name,
-                    is_structural=True,
+                    is_structural=False,
+                    severity=SEVERITY_DESIGN,
                     details=(
                         f"{source_name} has no kerning pairs"
                         + ("" if source_groups else " and no kerning groups")
                         + f", while the default has {len(default_pairs)} pairs. "
-                        f"Every pair resolves to 0 at this master and interpolates toward zero "
-                        f"around it. Give it the kerning, or make it a layer of a full UFO -- "
-                        f"ufo2ft skips layer sources for kerning."
+                        f"With ufo2ft 3.9 or later the kerning interpolates across this "
+                        f"master; with ufo2ft 3.8 or earlier every pair resolves to 0 here and "
+                        f"the kerning sags toward zero around it. If the master is meant to "
+                        f"correct outlines only, a layer of a full UFO says so in every version."
                     ),
                     raw_data={"font": source_name, "hasGroups": bool(source_groups)},
                 )

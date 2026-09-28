@@ -18,6 +18,7 @@ from designspace_lint.checkers.kerning import (
     NO_KERNING_IN_SOURCE,
     KerningChecker,
 )
+from designspace_lint.model import SEVERITY_DESIGN
 from fakes import build_designspace
 
 GROUPS = {"public.kern1.A": ["A", "Agrave"], "public.kern2.V": ["V", "W"]}
@@ -68,8 +69,12 @@ def test_master_with_no_kerning_at_all_is_reported_once():
     results = [r for r in KerningChecker(entry=entry).check() if r.location.startswith("Bold")]
 
     assert [r.code for r in results] == [NO_KERNING_IN_SOURCE]
-    assert results[0].is_structural is True
-    assert "layer" in results[0].details
+    # Since ufo2ft 3.9 the kerning interpolates across such a master rather
+    # than sagging to 0 there, so it no longer blocks anything: a warning that
+    # names both behaviours, not a structural error.
+    assert results[0].is_structural is False
+    assert results[0].severity == SEVERITY_DESIGN
+    assert "3.9" in results[0].details and "layer" in results[0].details
 
 
 def test_groups_without_pairs_do_not_excuse_the_master():

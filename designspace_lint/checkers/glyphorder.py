@@ -89,8 +89,16 @@ class GlyphOrderChecker(BaseChecker):
         # path *and* a layer.
         path_to_source = _SourceLookup(entry.sources)
 
-        # Use splitInterpolable to get proper sub-documents per discrete location
-        for discrete_loc, sub_doc in splitInterpolable(entry.doc):
+        # Use splitInterpolable to get proper sub-documents per discrete location.
+        # It raises on an instance it cannot place (an unknown location label,
+        # reported as 3.12); the sources are still worth comparing, so fall
+        # back to the document as one slice, as the glyphs checker does.
+        try:
+            splits = list(splitInterpolable(entry.doc))
+        except Exception as exc:
+            logger.debug(f"splitInterpolable failed: {exc}")
+            splits = [({}, entry.doc)]
+        for discrete_loc, sub_doc in splits:
             discrete_label = self._format_discrete_location(discrete_loc) if discrete_loc else ""
 
             # Get default source for this sub-doc

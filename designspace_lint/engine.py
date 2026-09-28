@@ -14,6 +14,13 @@ its values is a separate space with its own default master and its own
 extremes, and every rule is a rule about one slice. Results are tagged with the
 slice they came from.
 
+A check that raises does not take the run down, and it does not vanish into a
+log line either: it becomes a finding of its own (0.1), so the exit code says
+that part of the document went unchecked. Before 0.2 such a crash was only
+logged, and three of them -- a rule without a conditionset, an unnamed
+duplicate instance, an unknown location label -- each silently dropped the
+rest of a phase.
+
 Progress callbacks are ordinary callables invoked on the caller's own thread.
 A GUI that needs them elsewhere marshals them itself -- that is font-rover's
 `ValidatorRegistry`, which wraps this class in a thread and a main-loop hop.
@@ -25,8 +32,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator
 
-
-from .model import CheckResult
+from .model import CATEGORY_FILE, SEVERITY_STRUCTURAL, CheckResult
 
 if TYPE_CHECKING:
     from fontTools.designspaceLib import DesignSpaceDocument
@@ -51,6 +57,31 @@ PHASES = [
     ("features", "Checking features..."),
     ("glyphorder", "Checking glyph order..."),
 ]
+
+# 0.1: a check raised and the rest of its phase went unchecked. The file
+# category is where problems with the run itself live.
+PHASE_FAILED = 1
+
+# Phases that look at the whole document. With discrete axes they run once,
+# on the document itself: a slice has lost its discrete axes by construction,
+# so asking a slice whether it has axes answers a different question.
+DOCUMENT_PHASES = ("file", "geometry")
+
+
+def phase_failed(phase_id: str, exc: Exception, where: str = "") -> CheckResult:
+    """The finding for a check that raised instead of finishing."""
+    return CheckResult(
+        category=CATEGORY_FILE,
+        code=PHASE_FAILED,
+        description=f"the {phase_id} checks stopped early: {type(exc).__name__}: {exc}",
+        location=where,
+        details=(
+            "Everything this phase would have reported after the failure is missing, so "
+            "a clean result here does not mean a clean designspace."
+        ),
+        severity=SEVERITY_STRUCTURAL,
+        raw_data={"phase": phase_id, "exception": repr(exc)},
+    )
 
 
 class Linter:
@@ -300,6 +331,7 @@ class Linter:
             except Exception as e:
                 logger.warning(f"Phase {phase_id} failed: {e}")
                 current_work += 1 if phase_id != "glyphs" else glyph_count
+                yield phase_failed(phase_id, e)
 
             # Stop after structural problems in early phases
             if phase_id in ("file", "geometry", "sources"):
@@ -334,12 +366,52 @@ class Linter:
         if doc is None:
             return
 
-        sub_docs = list(splitInterpolable(doc))
+        doc_phases = [p for p in PHASES if p[0] in DOCUMENT_PHASES]
+        slice_phases = [p for p in PHASES if p[0] not in DOCUMENT_PHASES]
+
+        # The document-level phases run once, on the whole document.
+        self._structural_problem_found = False
+        for i, (phase_id, phase_name) in enumerate(doc_phases):
+            if self._cancelled:
+                logger.info("Check cancelled")
+                return
+            if on_phase:
+                on_phase(phase_name, i + 1, total_phases)
+            checker = self._get_checker(phase_id)
+            if checker is None:
+                continue
+            try:
+                for result in checker.check():
+                    if self._cancelled:
+                        return
+                    yield result
+                    if result.is_structural:
+                        self._structural_problem_found = True
+            except Exception as e:
+                logger.warning(f"Phase {phase_id} failed: {e}")
+                yield phase_failed(phase_id, e)
+            if self._structural_problem_found:
+                logger.info(f"Stopping after {phase_id}: structural problems")
+                return
+
+        # What the split would hide: sources and instances that fall into no
+        # slice, and instances whose location cannot be resolved at all.
+        yield from self._run_document_checks(doc)
+
+        try:
+            sub_docs = list(splitInterpolable(doc))
+        except Exception as e:
+            # An instance naming an unknown location label makes the split
+            # itself raise; without it there are no slices to check.
+            logger.warning(f"Splitting by discrete axes failed: {e}")
+            yield phase_failed("discrete split", e)
+            return
         num_splits = len(sub_docs)
+        total_steps = len(doc_phases) + len(slice_phases) * num_splits
 
         # Estimate total work for all splits
         glyph_count = self._estimate_glyph_count()
-        work_per_split = (total_phases - 1) + glyph_count
+        work_per_split = (len(slice_phases) - 1) + glyph_count
         total_work = work_per_split * num_splits
         current_work = 0
 
@@ -352,7 +424,12 @@ class Linter:
             discrete_label = self._format_discrete_location(discrete_loc)
             logger.info(f"Checking discrete location: {discrete_label or 'default'}")
 
-            for phase_id, phase_name in PHASES:
+            # Each slice stops on its own structural problems, not on an
+            # earlier slice's: a missing master in the upright must not leave
+            # the italic unchecked.
+            self._structural_problem_found = False
+
+            for phase_idx, (phase_id, phase_name) in enumerate(slice_phases):
                 # Check for cancellation
                 if self._cancelled:
                     return
@@ -362,8 +439,8 @@ class Linter:
                     label = phase_name
                     if discrete_label:
                         label = f"{phase_name} [{discrete_label}]"
-                    phase_num = split_idx * total_phases + PHASES.index((phase_id, phase_name)) + 1
-                    on_phase(label, phase_num, total_phases * num_splits)
+                    phase_num = len(doc_phases) + split_idx * len(slice_phases) + phase_idx + 1
+                    on_phase(label, phase_num, total_steps)
 
                 # Get checker for sub-doc
                 checker = self._get_checker_for_subdoc(phase_id, sub_doc)
@@ -376,14 +453,7 @@ class Linter:
                     for result in checker.check():
                         if self._cancelled:
                             return
-                        # Add discrete location to result
-                        if discrete_label:
-                            result.raw_data["discreteLocation"] = discrete_loc
-                            if result.location:
-                                result.location = f"{result.location} [{discrete_label}]"
-                            else:
-                                result.location = f"[{discrete_label}]"
-
+                        self._tag_with_slice(result, discrete_loc, discrete_label)
                         yield result
 
                         if result.is_structural:
@@ -400,14 +470,38 @@ class Linter:
                 except Exception as e:
                     logger.warning(f"Phase {phase_id} failed for {discrete_label}: {e}")
                     current_work += 1 if phase_id != "glyphs" else glyph_count
+                    failure = phase_failed(phase_id, e)
+                    self._tag_with_slice(failure, discrete_loc, discrete_label)
+                    yield failure
 
                 # Stop on structural problems
-                if phase_id in ("file", "geometry", "sources"):
-                    if self._structural_problem_found:
-                        logger.info(
-                            f"Stopping {discrete_label} after {phase_id}: structural problems"
-                        )
-                        break
+                if phase_id == "sources" and self._structural_problem_found:
+                    logger.info(f"Stopping {discrete_label} after {phase_id}: structural problems")
+                    break
+
+    def _run_document_checks(self, doc) -> Iterator[CheckResult]:
+        """The source and instance checks that only make sense before a split."""
+        from .checkers.instances import InstancesChecker
+        from .checkers.sources import SourcesChecker
+
+        for phase_id, checker_cls in (("sources", SourcesChecker), ("instances", InstancesChecker)):
+            checker = checker_cls(entry=self._entry, doc=doc, path=self._path)
+            try:
+                yield from checker.check_document(doc)
+            except Exception as e:
+                logger.warning(f"Document-level {phase_id} checks failed: {e}")
+                yield phase_failed(phase_id, e)
+
+    @staticmethod
+    def _tag_with_slice(result: CheckResult, discrete_loc, discrete_label: str) -> None:
+        """Say which discrete slice a result came from."""
+        if not discrete_label:
+            return
+        result.raw_data["discreteLocation"] = discrete_loc
+        if result.location:
+            result.location = f"{result.location} [{discrete_label}]"
+        else:
+            result.location = f"[{discrete_label}]"
 
     def _get_checker_for_subdoc(
         self, phase_id: str, sub_doc: "DesignSpaceDocument"

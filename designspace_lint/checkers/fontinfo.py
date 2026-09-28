@@ -58,7 +58,9 @@ class FontInfoChecker(BaseChecker):
             return
 
         # Find default source
-        default_source = entry.sources[0]  # TODO: Use doc.findDefault()
+        # The variable font is a copy of the designspace default master, so
+        # that is the fontinfo to compare against -- not whichever is listed first.
+        default_source = self._default_font_source()
         default_info = default_source.font.info
 
         # Check 6.0: unitsPerEm must be set in default

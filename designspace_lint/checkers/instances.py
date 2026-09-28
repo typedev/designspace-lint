@@ -14,6 +14,9 @@ Checks (codes match designspaceProblems):
 - 3.7: Missing style name
 - 3.8: Missing output path (filename)
 - 3.10: No instances defined
+- 3.11: Instance at a discrete-axis value the axis does not declare
+- 3.12: Instance refers to a location label the document does not have
+- 3.13: Two instances with one name at different locations
 
 Copyright 2024-2026 TypeDev
 Licensed under the Apache License, Version 2.0
@@ -24,8 +27,9 @@ from __future__ import annotations
 import logging
 from typing import Iterator
 
-from ..model import CATEGORY_INSTANCES, CheckResult
-from .base import BaseChecker
+from ..model import CATEGORY_INSTANCES, SEVERITY_STRUCTURAL, CheckResult
+from .base import BaseChecker, format_value as _num
+from .sources import discrete_value_problems
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +43,15 @@ INSTANCE_MISSING_FAMILY_NAME = 6  # 3,6
 INSTANCE_MISSING_STYLE_NAME = 7  # 3,7
 INSTANCE_MISSING_FILENAME = 8  # 3,8
 INSTANCE_NONE_DEFINED = 10  # 3,10
+# Codes past 10 are ours; designspaceProblems stops at 10.
+INSTANCE_OFF_DISCRETE_VALUES = 11
+INSTANCE_UNKNOWN_LOCATION_LABEL = 12
+INSTANCE_NAME_REUSED = 13
+
+
+def _instance_name(instance) -> str:
+    """Family and style, whichever of them the instance has."""
+    return " ".join(n for n in (instance.familyName, instance.styleName) if n) or "unnamed"
 
 
 def _pretty_location(location: dict) -> str:
@@ -103,8 +116,16 @@ class InstancesChecker(BaseChecker):
 
         # Track locations for duplicate detection
         all_locations: dict[tuple, list] = {}
+        # And names, for the reverse: one name at several locations
+        all_names: dict[tuple, list] = {}
+        label_names = {label.name for label in getattr(doc, "locationLabels", None) or []}
 
         for i, instance in enumerate(doc.instances):
+            unknown_label = self._unknown_label_result(i, instance, label_names)
+            if unknown_label is not None:
+                yield unknown_label
+                continue
+
             # Get full design location
             try:
                 location = instance.getFullDesignLocation(doc)
@@ -183,6 +204,10 @@ class InstancesChecker(BaseChecker):
                     all_locations[key] = []
                 all_locations[key].append((i, instance))
 
+                if instance.familyName or instance.styleName:
+                    name_key = (instance.familyName, instance.styleName)
+                    all_names.setdefault(name_key, []).append((key, instance))
+
             # 3,6: Missing family name
             if not instance.familyName:
                 details = f"instance at {_pretty_location(location)}"
@@ -233,6 +258,75 @@ class InstancesChecker(BaseChecker):
                     is_structural=False,
                     raw_data={
                         "location": dict(key),
-                        "instances": [inst.familyName + " " + inst.styleName for _, inst in items],
+                        "instances": [_instance_name(inst) for _, inst in items],
                     },
                 )
+
+        # 3,13: one name, several locations -- a style menu cannot tell them apart
+        for (family, style), items in all_names.items():
+            locations = {key for key, _ in items}
+            if len(locations) > 1:
+                name = _instance_name(items[0][1])
+                yield self._make_result(
+                    code=INSTANCE_NAME_REUSED,
+                    description=f"{len(locations)} instances named {name} at different locations",
+                    location=name,
+                    details="; ".join(_pretty_location(dict(key)) for key in sorted(locations)),
+                    is_structural=False,
+                    raw_data={"familyName": family, "styleName": style},
+                )
+
+    def _unknown_label_result(self, i, instance, label_names) -> CheckResult | None:
+        """3,12: a location label that does not exist.
+
+        Reading the file accepts it; resolving the location raises, and with
+        it the split into discrete slices and varLib's own loading.
+        """
+        label = getattr(instance, "locationLabel", None)
+        if not label or label in label_names:
+            return None
+        return self._make_result(
+            code=INSTANCE_UNKNOWN_LOCATION_LABEL,
+            description=f"instance refers to an unknown location label: {label}",
+            location=_instance_name(instance),
+            details=(
+                "fontTools cannot resolve this instance's location, so splitting the "
+                "designspace and building it both fail on it. Define the label under "
+                "<labels>, or give the instance a location."
+            ),
+            is_structural=False,
+            severity=SEVERITY_STRUCTURAL,
+            raw_data={"instance": i, "locationLabel": label},
+        )
+
+    def check_document(self, doc) -> Iterator[CheckResult]:
+        """The instance checks that need the whole document, before it is split.
+
+        Splitting drops an instance off its discrete axis' values, and fails
+        outright on an unknown location label, so neither can be seen per slice.
+        """
+        label_names = {label.name for label in getattr(doc, "locationLabels", None) or []}
+        for i, instance in enumerate(doc.instances):
+            result = self._unknown_label_result(i, instance, label_names)
+            if result is not None:
+                yield result
+        yield from self._check_discrete_values(doc)
+
+    def _check_discrete_values(self, doc) -> Iterator[CheckResult]:
+        """3.11: instances off their discrete axis' values."""
+        for instance, axis, value in discrete_value_problems(doc, doc.instances):
+            values = ", ".join(_num(v) for v in axis.values)
+            yield self._make_result(
+                code=INSTANCE_OFF_DISCRETE_VALUES,
+                description=(
+                    f"instance at {axis.name}={_num(value)}, which is not one of the axis' "
+                    f"values ({values})"
+                ),
+                location=_instance_name(instance),
+                details=(
+                    "The designspace is split along its discrete axes by their declared "
+                    "values, so this instance belongs to no slice and is never generated."
+                ),
+                is_structural=False,
+                raw_data={"axisName": axis.name, "value": value},
+            )

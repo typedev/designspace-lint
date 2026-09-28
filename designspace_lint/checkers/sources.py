@@ -15,6 +15,7 @@ Checks:
 - 2.7: Source layer not found
 - 2.8: Source has no font attribute
 - 2.9: Default source location mismatch
+- 2.10: Source at a discrete-axis value the axis does not declare
 
 Copyright 2024-2026 TypeDev
 Licensed under the Apache License, Version 2.0
@@ -27,8 +28,9 @@ import os
 from pathlib import Path
 from typing import Iterator
 
-from ..model import CATEGORY_SOURCES, CheckResult
-from .base import BaseChecker
+from ..axis_span import design_location
+from ..model import CATEGORY_SOURCES, SEVERITY_STRUCTURAL, CheckResult
+from .base import BaseChecker, format_value as _num
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,52 @@ DUPLICATE_SOURCE_LOCATION = 6
 SOURCE_LAYER_NOT_FOUND = 7
 SOURCE_NO_FONT = 8
 DEFAULT_LOCATION_MISMATCH = 9
+# Codes past 9 are ours; designspaceProblems stops at 9.
+SOURCE_OFF_DISCRETE_VALUES = 10
+
+# Coordinates are typed by hand into the XML.
+TOLERANCE = 1e-6
+
+
+def _location_key(location: dict) -> tuple:
+    """A location as varLib compares it: every axis filled in, defaults dropped.
+
+    varLib normalizes full locations and `VariationModel` drops zero
+    coordinates before it looks for duplicates, so `{Weight: 900}` and
+    `{Weight: 900, Width: <default>}` are the same master to it. Comparing
+    the full design location, rounded, finds the same collisions.
+    """
+    return tuple(sorted((name, round(float(value), 6)) for name, value in location.items()))
+
+
+def discrete_value_problems(doc, descriptors) -> Iterator[tuple]:
+    """(descriptor, axis, value) for every descriptor off its discrete axis' values.
+
+    `splitInterpolable` builds its slices from the declared values and keeps a
+    source or instance only on an exact match, so one at any other value falls
+    into no slice and is dropped from every build without a message.
+    """
+    discrete = [axis for axis in doc.axes if getattr(axis, "values", None)]
+    if not discrete:
+        return
+    for descriptor in descriptors:
+        try:
+            if hasattr(descriptor, "getFullUserLocation"):
+                user = descriptor.getFullUserLocation(doc)
+            else:  # pragma: no cover - old descriptors
+                user = doc.map_backward(design_location(descriptor, doc))
+        except Exception:
+            continue  # an unresolvable location is reported elsewhere
+        for axis in discrete:
+            value = user.get(axis.name, axis.default)
+            if not any(abs(value - v) <= TOLERANCE for v in axis.values):
+                yield descriptor, axis, value
+
+
+# A master that cannot be opened is an error, but not one that ends the run:
+# the masters that did open are still worth checking. Amstelvar A2 v2 misses
+# 13 of 150 UFOs, and stopping there left the other 137 unexamined.
+CANNOT_OPEN = {"is_structural": False, "severity": SEVERITY_STRUCTURAL}
 
 
 class SourcesChecker(BaseChecker):
@@ -116,22 +164,28 @@ class SourcesChecker(BaseChecker):
             if source.location:
                 yield from self._check_source_location(source, source_name, axis_info)
 
-                # Check 2.6: Duplicate locations
-                loc_tuple = tuple(sorted(source.location.items()))
-                if loc_tuple in seen_locations:
-                    yield self._make_result(
-                        code=DUPLICATE_SOURCE_LOCATION,
-                        description=(f"Duplicate source location with {seen_locations[loc_tuple]}"),
-                        location=source_name,
-                        is_structural=True,
-                        raw_data={
-                            "path": source.path,
-                            "location": source.location,
-                            "duplicateOf": seen_locations[loc_tuple],
-                        },
-                    )
-                else:
-                    seen_locations[loc_tuple] = source_name
+            # Check 2.6: Duplicate locations, compared the way varLib compares
+            # them -- with omitted axes filled in, so a location that leaves the
+            # default out and one that writes it down are the same.
+            loc_tuple = _location_key(design_location(source, doc))
+            if loc_tuple in seen_locations:
+                yield self._make_result(
+                    code=DUPLICATE_SOURCE_LOCATION,
+                    description=(f"Duplicate source location with {seen_locations[loc_tuple]}"),
+                    location=source_name,
+                    details=(
+                        'varLib refuses two masters at one location ("Locations must be '
+                        'unique", or "More than one base master" at the default).'
+                    ),
+                    is_structural=True,
+                    raw_data={
+                        "path": source.path,
+                        "location": source.location,
+                        "duplicateOf": seen_locations[loc_tuple],
+                    },
+                )
+            else:
+                seen_locations[loc_tuple] = source_name
 
             # Check 2.7: Layer exists (if specified)
             if source.layerName:
@@ -153,6 +207,31 @@ class SourcesChecker(BaseChecker):
                     is_structural=True,
                 )
 
+    def check_document(self, doc) -> Iterator[CheckResult]:
+        """2.10, on the whole document: sources off their discrete axis' values.
+
+        Runs before the split, since after it these sources are simply gone.
+        """
+        for source, axis, value in discrete_value_problems(doc, doc.sources):
+            source_name = source.name or source.filename or "unknown"
+            values = ", ".join(_num(v) for v in axis.values)
+            yield self._make_result(
+                code=SOURCE_OFF_DISCRETE_VALUES,
+                description=(
+                    f"source at {axis.name}={_num(value)}, which is not one of the axis' "
+                    f"values ({values})"
+                ),
+                location=source_name,
+                details=(
+                    "The designspace is split along its discrete axes by their declared "
+                    "values, so this source belongs to no slice: it is left out of every "
+                    "variable font and of every check below, with no message from fontTools."
+                ),
+                is_structural=False,
+                severity=SEVERITY_STRUCTURAL,
+                raw_data={"path": source.path, "axisName": axis.name, "value": value},
+            )
+
     def _check_source_file(self, source, source_name: str) -> Iterator[CheckResult]:
         """Check source file exists and is valid UFO."""
         path = source.path
@@ -169,7 +248,7 @@ class SourcesChecker(BaseChecker):
                 code=SOURCE_FILE_NOT_FOUND,
                 description=f"Source file not found: {path}",
                 location=source_name,
-                is_structural=True,
+                **CANNOT_OPEN,
                 raw_data={"path": str(path)},
             )
             return
@@ -182,7 +261,7 @@ class SourcesChecker(BaseChecker):
                     code=SOURCE_NOT_VALID_UFO,
                     description=f"Source is not a UFO directory: {path}",
                     location=source_name,
-                    is_structural=True,
+                    **CANNOT_OPEN,
                     raw_data={"path": str(path)},
                 )
             return
@@ -194,7 +273,7 @@ class SourcesChecker(BaseChecker):
                 code=SOURCE_NOT_VALID_UFO,
                 description=f"Source missing metainfo.plist: {path}",
                 location=source_name,
-                is_structural=True,
+                **CANNOT_OPEN,
                 raw_data={"path": str(path)},
             )
 

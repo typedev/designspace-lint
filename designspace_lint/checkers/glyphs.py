@@ -349,7 +349,7 @@ class GlyphsChecker(BaseChecker):
                 details=(
                     f"Glyph '{glyph_name}' is drawn only up to {gap.axis}={gap.covered:g}, while "
                     f"the masters reach {gap.required:g}. Beyond its last master the glyph goes "
-                    f"back to the default master's shape."
+                    f"back to the default master's shape." + self._unopened_note(sub_doc, pairs)
                 ),
                 problem_type=GlyphProblemType.MISSING_GLYPH,
                 raw_data={
@@ -362,6 +362,21 @@ class GlyphsChecker(BaseChecker):
                     "missingIn": missing_in,
                 },
             )
+
+    @staticmethod
+    def _unopened_note(sub_doc, pairs) -> str:
+        """Say so when the span was measured without some of the masters.
+
+        A master that could not be opened (2.1) takes no part here, so the
+        extent a glyph has to reach is the extent of the masters that did open.
+        """
+        unopened = len(sub_doc.sources) - len(pairs)
+        if unopened <= 0:
+            return ""
+        return (
+            f" {unopened} master(s) of this designspace could not be opened; the span is "
+            f"measured without them."
+        )
 
     def _static_glyph_result(self, glyph_name, pairs, present_in) -> CheckResult:
         """4.13: the glyph is drawn only in the default master.
