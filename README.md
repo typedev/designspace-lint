@@ -75,7 +75,7 @@ problems = lint(my_designspace)     # nothing is re-opened
 | Category | What it looks at |
 |---|---|
 | 0 File | the document can be read at all, and every check could finish |
-| 1 Geometry | axis minimum/default/maximum, mappings, duplicate names and tags, discrete axis values, **avar2 mappings from the default**, the declared `<variable-fonts>` |
+| 1 Geometry | axis minimum/default/maximum, mappings, duplicate names and tags, discrete axis values, **avar2 mappings**: from the default, duplicate inputs, unknown axes, clamped values, outputs past the masters, chains; the declared `<variable-fonts>` |
 | 2 Sources | locations (as written in the file, before fontTools drops unknown axes), missing UFOs, duplicate locations as varLib compares them, the default, sources off a discrete axis' values |
 | 3 Instances | instance locations and names, unknown location labels, one name at two locations |
 | 4 Glyphs | master compatibility: contours, points, curve types, components, anchors, unicodes, contour direction, empty glyphs, **how far along each axis a glyph actually reaches**, and with `--interpolatable` start points, contour order and shapes that thin out or kink |
@@ -84,6 +84,7 @@ problems = lint(my_designspace)     # nothing is re-opened
 | 7 Rules | rule conditions, rules that never apply, rule glyphs missing from the default master, **overlapping rules** |
 | 8 Features | whether the masters' `features.fea` keep the build on the variable path |
 | 9 Glyph Order | extra glyphs, and orders that break the per-master merge |
+| 10 Labels | DS5 axis and location labels: **the instance names the build derives from them**, values no label covers, labels STAT drops, ranges and style links |
 
 The `(category, code)` pairs are a **public contract**. A retired check keeps
 its number, and new checks only ever get new ones.
@@ -122,6 +123,16 @@ assumed, and several of them contradict what seems reasonable:
   every other mapping from it: with Weight 100/400/900, adding `400 → 650` to
   `900 → 700` moves normalized 1.0 from 0.6 to 0.1 and leaves the default
   where it was.
+- **An avar2 mapping value past the axis end is clamped**, and the mappings
+  are evaluated at the coordinates the user set, before any of them applies:
+  one mapping's output never feeds another's input. Two mappings whose inputs
+  normalize to the same point stop the build, two default-input mappings on
+  different axes included.
+- **Instance names come from the labels.** When the document has labels, the
+  build names each instance from the labels at its location, and a
+  `stylename` without `xml:lang="en"` is replaced by that in the variable
+  font. Where every label is elidable and there is no `elidedfallbackname`,
+  the name is empty.
 - Duplicate masters are duplicates after the omitted axes are filled in:
   `{Weight: 900}` and `{Weight: 900, Width: 100}` (the default) are one
   location to varLib, which refuses them.

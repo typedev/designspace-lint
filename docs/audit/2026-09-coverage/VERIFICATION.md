@@ -55,3 +55,21 @@ which the check already knew.
 
 Catalog rows outside what 0.2.0 changes, the avar2 renderer rows, and the
 ~40 sub-claims the catalog itself marks UNVERIFIED.
+
+## Second pass: avar2 and labels (28 September 2026)
+
+Re-checked for 0.5.0 against fontTools 4.65, with the avar, STAT and fvar
+tables built in memory.
+
+| Row | Finding |
+|---|---|
+| AVAR2-05 | **Wrong.** Two mappings from the default location, `{wght: default}` and `{wdth: default}`, do not slip through. Both normalize to `{}` and `VariationModel` refuses: "Locations must be unique." (`varLib/models.py:277-280`). |
+| AVAR2-07 | **Wrong for real builds.** `build_many` splits the document first, and the split drops a mapping that names an unknown axis (`designspaceLib/split.py:231-241`) — silently for an input, with only a log line for an output. The `KeyError` happens only through `varLib.build()` called directly. |
+| AVAR2-10 | **Wording wrong.** A mapping applies at *every* value of an axis its input leaves out, not only at that axis' default. |
+| AVAR2-15 | **Confirmed**, and measured. An output past the outermost master is not frozen: the last master's support tapers to 0 at the axis end, so the effect rolls back toward the default. |
+| AVAR2-21 | **Confirmed.** A mapping on a discrete axis is dropped by the split. |
+| LABEL-03 | **True, low value.** Two labels at one value both reach STAT, and names use the first. |
+| LABEL-09 | **True, mostly harmless in STAT.** The real damage from a missing `elidedfallbackname` is in instance names: `getStatNames` joins nothing into `""` (`statNames.py:104-111`), and `split.py:328-352` puts that into fvar. |
+| LABEL-11 | **Confirmed.** A label with both a link and a range becomes format 3, and the range is dropped (`designspaceLib/__init__.py:1247-1265`). |
+| LABEL-14 | **Confirmed, and the most common failure found.** A `stylename` without `xml:lang="en"` is replaced in fvar by the label-derived name. In a local corpus of 72 labelled DS5 documents, 50 give the default instance an empty name. |
+| new | A location label that does not name every axis never names an instance: `labelForUserLocation` compares it with a full location (`designspaceLib/__init__.py:3020-3035`). |

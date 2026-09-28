@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-09-28
+
+avar2 mappings and DesignSpace 5 labels. Before any rule was written, both
+areas were researched again against fontTools 4.65 and ufo2ft 3.9 source, with
+the tables built in memory. The rules were then run over real documents: the
+Amstelvar A2 designspaces for avar2, and 72 local DS5 files with labels.
+
+### Added
+
+- **Category 10, Labels**: what the build makes of axis and location labels.
+  - **10.0: the instance name the variable font actually gets.** When a
+    document has labels, splitting it for the build names each instance from
+    the labels at its location. A `stylename` without `xml:lang="en"` is
+    replaced by that name in fvar. It is an error when that name is empty:
+    every label there is elidable and there is no `elidedfallbackname`. In
+    the local corpus, 50 of 72 labelled documents give their Regular an empty
+    name in the variable font, and 54 rename at least one instance.
+  - **10.1**: a value no label covers. It drops out of the derived name.
+  - **10.2**: elidable labels with no `elidedfallbackname`, which is the root
+    of 10.0's empty names.
+  - **10.3**: a label outside its axis, or outside a declared variable font's
+    range. It is left out of STAT.
+  - **10.4**: a location label that leaves an axis out. fontTools compares it
+    with full locations, so it never names an instance.
+  - **10.5**: range labels that are inverted, that exclude their own value,
+    that overlap (the first one in document order wins), or that also carry
+    a link (STAT drops the range).
+  - **10.6**: a `linkeduservalue` pointing at no label. Also a wght or
+    ital/slnt axis with no links while instances depend on the labels for
+    style linking.
+  - **10.7**: two labels at one value, and a discrete value without a label.
+- **1.23–1.28, avar2 mappings.**
+  - **1.23**: two mappings whose inputs normalize to the same point. varLib
+    stops with "Locations must be unique". That includes two default-input
+    mappings on different axes.
+  - **1.24**: a mapping that names an unknown or discrete axis. The split
+    drops it, silently for an input. If the name is an axis tag, the finding
+    suggests the matching axis name.
+  - **1.25**: a mapping value past the axis end, which is clamped. In
+    Amstelvar A2 this is 51 of 93 mappings in the Roman and 37 of 100 in the
+    Italic. Several of them collapse onto one plateau; the v2 Roman has none.
+  - **1.26**: an output past the outermost master on that axis. It moves
+    nothing, or tapers back toward the default.
+  - **1.27**: one mapping's output read as another's input. Deltas are
+    evaluated before avar2 applies, so the chain never fires.
+  - **1.28**: a hidden axis with masters that no mapping touches
+    (information).
+
+### Changed
+
+- **3.11, 3.13, 7.7 and the new 1.25–1.27 are warnings.** The CLI treats a
+  finding in categories other than 4, 5, 6 and 9 as information unless the
+  check says otherwise. These checks did not say, so they printed as
+  information.
+
 ## [0.4.0] - 2026-09-28
 
 (There is no 0.3: the repository carries v0.3.x tags from the application
