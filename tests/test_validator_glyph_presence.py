@@ -280,3 +280,38 @@ def test_contour_and_point_differences_are_reported():
 
     assert 0 in codes, "contour count difference (4.0) not reported"
     assert 3 in codes, "on-curve count difference (4.3) not reported"
+
+
+def test_an_empty_glyph_is_skipped_by_the_outline_but_not_by_the_advance():
+    """gvar reads an empty non-default glyph as missing when the default draws it.
+
+    So the outline interpolates across that master -- no incompatibility to
+    report -- while its advance width still counts in HVAR. Built with
+    fontTools 4.65: no gvar delta, a +300 HVAR delta.
+    """
+    entry = _weight_entry(
+        [
+            {"A": _drawn()},
+            {"A": FakeGlyph("A", width=800)},  # empty in the middle
+            {"A": _drawn(size=200)},
+        ]
+    )
+    results = list(GlyphsChecker(entry=entry).check())
+
+    assert [(r.code, r.glyph_name) for r in results] == [(GLYPH_EMPTY_IN_SOURCE, "A")]
+    assert "800" in results[0].description
+    assert "outline skips" in results[0].description
+
+
+def test_an_empty_glyph_at_the_end_of_an_axis_reverts_like_a_missing_one():
+    entry = _weight_entry(
+        [
+            {"A": _drawn()},
+            {"A": _drawn(size=150)},
+            {"A": FakeGlyph("A", width=800)},  # empty at the maximum
+        ]
+    )
+    codes = _codes(entry)
+
+    assert (GLYPH_EMPTY_IN_SOURCE, "A") in codes
+    assert (GLYPH_AXIS_SPAN_GAP, "A") in codes

@@ -39,6 +39,10 @@ dependencies = [
 # The features check compares files the way ufo2ft does, using its own
 # tokenizer. Without it, that one check is skipped and the rest still run.
 features = ["ufo2ft>=3.0.0"]
+# The point-correspondence pass (--interpolatable) runs fontTools'
+# varLib.interpolatable, which needs an assignment solver to match contours
+# in glyphs with more than six of them. munkres is a small pure-Python one.
+interpolatable = ["munkres>=1.1"]
 
 [project.scripts]
 designspace-lint = "designspace_lint.cli:main"
@@ -78,4 +82,5 @@ dev = [
     "pytest>=7.0",
     "ruff==0.14.6",
     "ufo2ft>=3.0.0",
+    "munkres>=1.1",
 ]

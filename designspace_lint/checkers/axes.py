@@ -24,6 +24,10 @@ Checks:
 - 1.16: Discrete axis default is not one of its values
 - 1.17: No continuous axis, so there is nothing to interpolate
 - 1.18: avar2 mapping from the default location (varLib drops it)
+- 1.19: Variable font subsets an axis the document does not have
+- 1.20: Variable font selects a range over a discrete axis
+- 1.21: Variable font subset selects nothing on its axis
+- 1.22: Variable font default of 0 that fontTools reads as "not set"
 
 Copyright 2024-2026 TypeDev
 Licensed under the Apache License, Version 2.0
@@ -60,6 +64,10 @@ AXIS_MAP_NO_DEFAULT = 15
 DISCRETE_DEFAULT_NOT_IN_VALUES = 16
 NO_CONTINUOUS_AXIS = 17
 AVAR2_MAPPING_FROM_DEFAULT = 18
+VF_UNKNOWN_AXIS = 19
+VF_RANGE_ON_DISCRETE_AXIS = 20
+VF_SUBSET_SELECTS_NOTHING = 21
+VF_ZERO_DEFAULT_IGNORED = 22
 
 # Coordinates are typed by hand into the XML.
 TOLERANCE = 1e-6
@@ -184,6 +192,104 @@ class AxesChecker(BaseChecker):
 
         # Check 1.18: avar2 mappings
         yield from self._check_axis_mappings(doc)
+
+        # Checks 1.19-1.22: <variable-fonts>
+        yield from self._check_variable_fonts(doc)
+
+    def _check_variable_fonts(self, doc) -> Iterator[CheckResult]:
+        """The variable fonts a DS5 document declares, as fontTools will cut them.
+
+        Reading the file checks only their shape. The axes they name are looked
+        up when the document is split (`designspaceLib.types.getVFUserRegion`):
+        an unknown axis, or a range over a discrete one, raises there, and a
+        subset that selects nothing makes the variable font fall out of every
+        split with no message at all. Only explicit declarations are checked;
+        without them fontTools derives the fonts itself.
+        """
+        if getattr(doc, "formatTuple", (5, 0)) < (5, 0):
+            return  # fontTools does not read <variable-fonts> below 5.0
+        axes = {axis.name: axis for axis in doc.axes}
+        for vf in getattr(doc, "variableFonts", None) or []:
+            where = f"variable font {vf.name}"
+            for subset in vf.axisSubsets:
+                axis = axes.get(subset.name)
+                if axis is None:
+                    yield self._vf_result(
+                        VF_UNKNOWN_AXIS,
+                        f"{where} subsets an axis the designspace does not have: {subset.name}",
+                        where,
+                        "Splitting the designspace raises on it, so no variable font is built "
+                        "from this document until the axis name is fixed.",
+                        vf,
+                        subset,
+                    )
+                    continue
+                is_range = hasattr(subset, "userMinimum")
+                if is_range and _is_discrete(axis):
+                    yield self._vf_result(
+                        VF_RANGE_ON_DISCRETE_AXIS,
+                        f"{where} selects a range over the discrete axis {axis.name}",
+                        where,
+                        "A discrete axis does not vary; splitting raises on a range over it. "
+                        "Give the subset a uservalue instead.",
+                        vf,
+                        subset,
+                    )
+                    continue
+                if not is_range:
+                    value = subset.userValue
+                    if _is_discrete(axis):
+                        selects = any(abs(value - v) <= TOLERANCE for v in axis.values)
+                        allowed = ", ".join(_num(v) for v in axis.values)
+                    else:
+                        selects = axis.minimum - TOLERANCE <= value <= axis.maximum + TOLERANCE
+                        allowed = f"{_num(axis.minimum)}-{_num(axis.maximum)}"
+                    if not selects:
+                        yield self._vf_result(
+                            VF_SUBSET_SELECTS_NOTHING,
+                            f"{where} takes {axis.name}={_num(value)}, outside {allowed}",
+                            where,
+                            "The subset matches no part of the designspace, so this variable "
+                            "font falls out of the split and is never built, without a message.",
+                            vf,
+                            subset,
+                        )
+                    continue
+                if subset.userMinimum > axis.maximum or subset.userMaximum < axis.minimum:
+                    yield self._vf_result(
+                        VF_SUBSET_SELECTS_NOTHING,
+                        f"{where} takes {axis.name} {_num(subset.userMinimum)}-"
+                        f"{_num(subset.userMaximum)}, outside the axis "
+                        f"{_num(axis.minimum)}-{_num(axis.maximum)}",
+                        where,
+                        "The subset matches no part of the designspace, so this variable font "
+                        "falls out of the split and is never built, without a message.",
+                        vf,
+                        subset,
+                    )
+                elif subset.userDefault == 0 and axis.default != 0:
+                    # getVFUserRegion: `axisSubset.userDefault or axis.default`
+                    yield self._vf_result(
+                        VF_ZERO_DEFAULT_IGNORED,
+                        f"{where}: userdefault 0 on {axis.name} is read as not set, and "
+                        f"{_num(axis.default)} is used",
+                        where,
+                        "fontTools takes the subset's default with `userDefault or "
+                        "axis.default`, so an explicit 0 falls through to the axis default.",
+                        vf,
+                        subset,
+                    )
+
+    def _vf_result(self, code, description, where, details, vf, subset) -> CheckResult:
+        return self._make_result(
+            code=code,
+            description=description,
+            location=where,
+            details=details,
+            is_structural=False,
+            severity=SEVERITY_STRUCTURAL,
+            raw_data={"variableFont": vf.name, "axisName": subset.name},
+        )
 
     def _check_discrete_axis(self, axis, axis_name: str) -> Iterator[CheckResult]:
         """A discrete axis has values, not a range; its default must be one of them."""

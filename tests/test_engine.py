@@ -136,3 +136,48 @@ def test_a_missing_ufo_does_not_stop_the_run():
     assert all(r.severity == SEVERITY_STRUCTURAL for r in missing)
     # a later phase ran
     assert (CATEGORY_INSTANCES, INSTANCE_NONE_DEFINED) in _pairs(results)
+
+
+def test_document_checks_run_once_without_discrete_axes():
+    """3.12 comes from the whole document, once -- not once per phase or slice."""
+    entry = build_designspace(
+        axes=[WEIGHT],
+        sources=[{"name": "Regular", "location": {"Weight": 400}, "glyphs": ["A"]}],
+    )
+    instance = InstanceDescriptor()
+    instance.familyName, instance.styleName = "F", "Bold"
+    instance.locationLabel = "Bold"
+    entry.doc.addInstance(instance)
+
+    pairs = _pairs(lint(entry))
+
+    assert pairs.count((CATEGORY_INSTANCES, INSTANCE_UNKNOWN_LOCATION_LABEL)) == 1
+
+
+def test_a_bad_variable_font_declaration_does_not_stop_the_slices():
+    """A range over a discrete axis makes splitInterpolable raise; report it, split anyway."""
+    from fontTools.designspaceLib import RangeAxisSubsetDescriptor, VariableFontDescriptor
+
+    from designspace_lint.checkers.axes import VF_RANGE_ON_DISCRETE_AXIS
+
+    entry = build_designspace(
+        axes=[WEIGHT, ITALIC],
+        sources=[
+            {"name": "Roman", "location": {"Weight": 400, "Italic": 0}, "glyphs": ["A"]},
+            {"name": "Italic", "location": {"Weight": 400, "Italic": 1}, "glyphs": ["A"]},
+        ],
+    )
+    entry.doc.addVariableFont(
+        VariableFontDescriptor(
+            name="VF",
+            axisSubsets=[
+                RangeAxisSubsetDescriptor(name="Weight"),
+                RangeAxisSubsetDescriptor(name="Italic"),
+            ],
+        )
+    )
+    pairs = _pairs(lint(entry))
+
+    assert (CATEGORY_GEOMETRY, VF_RANGE_ON_DISCRETE_AXIS) in pairs
+    assert (CATEGORY_FILE, PHASE_FAILED) not in pairs
+    assert pairs.count((CATEGORY_SOURCES, SOURCE_FILE_NOT_FOUND)) == 2

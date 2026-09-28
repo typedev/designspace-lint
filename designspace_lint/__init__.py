@@ -65,7 +65,7 @@ __version__ = "0.2.0"
 Problem = CheckResult
 
 
-def iter_lint(designspace, *, on_phase=None, on_progress=None, cancel=None):
+def iter_lint(designspace, *, on_phase=None, on_progress=None, cancel=None, interpolatable=False):
     """Yield problems one at a time, as they are found.
 
     Args:
@@ -74,26 +74,47 @@ def iter_lint(designspace, *, on_phase=None, on_progress=None, cancel=None):
         on_progress: ``(current, total, message)`` for finer-grained progress.
         cancel: Anything with ``is_set()``; polled so a caller running this in
             a thread can stop it.
+        interpolatable: also compare the masters point by point with
+            fontTools' ``varLib.interpolatable`` (4.14-4.18). Slower; install
+            ``designspace-lint[interpolatable]`` for glyphs of 7+ contours.
 
     Yields:
         :class:`CheckResult`, in phase order.
     """
-    linter = Linter(designspace=designspace, cancel=cancel)
+    linter = Linter(designspace=designspace, cancel=cancel, interpolatable=interpolatable)
     yield from linter.run(on_phase=on_phase, on_progress=on_progress)
 
 
-def lint(designspace, *, on_phase=None, on_progress=None, cancel=None) -> list[CheckResult]:
+def lint(
+    designspace, *, on_phase=None, on_progress=None, cancel=None, interpolatable=False
+) -> list[CheckResult]:
     """Every problem in a designspace whose fonts are already open."""
-    return list(iter_lint(designspace, on_phase=on_phase, on_progress=on_progress, cancel=cancel))
+    return list(
+        iter_lint(
+            designspace,
+            on_phase=on_phase,
+            on_progress=on_progress,
+            cancel=cancel,
+            interpolatable=interpolatable,
+        )
+    )
 
 
-def lint_path(path, *, on_phase=None, on_progress=None, cancel=None) -> list[CheckResult]:
+def lint_path(
+    path, *, on_phase=None, on_progress=None, cancel=None, interpolatable=False
+) -> list[CheckResult]:
     """Open a .designspace file and check it.
 
     Raises:
         FileNotFoundError: the designspace file does not exist.
     """
-    return lint(open_designspace(path), on_phase=on_phase, on_progress=on_progress, cancel=cancel)
+    return lint(
+        open_designspace(path),
+        on_phase=on_phase,
+        on_progress=on_progress,
+        cancel=cancel,
+        interpolatable=interpolatable,
+    )
 
 
 __all__ = [

@@ -252,16 +252,18 @@ class GlyphsChecker(BaseChecker):
                 if default_source not in present_in:
                     yield self._missing_in_default_result(glyph_name, present_in, default_source)
                     continue
-                yield from self._check_axis_coverage(glyph_name, sub_doc, pairs, present_in)
-                glyphs_to_check.append(glyph_name)
+                outline_in, skipped = self._outline_masters(glyph_name, present_in, default_source)
+                yield from self._skipped_outline_results(glyph_name, outline_in, skipped)
+                yield from self._check_axis_coverage(glyph_name, sub_doc, pairs, outline_in)
+                glyphs_to_check.append((glyph_name, outline_in))
 
             # Check glyphs sequentially (ThreadPoolExecutor doesn't help due to GIL)
             total_glyphs = len(glyphs_to_check)
             report_interval = max(1, total_glyphs // 100)  # Report every 1%
 
-            for i, glyph_name in enumerate(glyphs_to_check):
+            for i, (glyph_name, outline_in) in enumerate(glyphs_to_check):
                 try:
-                    yield from self._check_glyph(glyph_name, present_by_glyph[glyph_name])
+                    yield from self._check_glyph(glyph_name, outline_in)
                 except Exception as e:
                     logger.warning(f"Error checking glyph {glyph_name}: {e}")
 
@@ -405,12 +407,80 @@ class GlyphsChecker(BaseChecker):
             raw_data={"glyphName": glyph_name, "locationType": "binary", "presentIn": [drawn_in]},
         )
 
-    def _empty_glyph_results(self, glyph_name, drawn, empty) -> Iterator[CheckResult]:
-        """4.12: the glyph is drawn in some masters and left empty in others.
+    @staticmethod
+    def _has_outline(glyph) -> bool:
+        """Contours or components: what a compiled glyph has a non-zero count of."""
+        return glyph is not None and (len(glyph.contours) > 0 or bool(glyph.components))
 
-        A glyph empty everywhere is an ordinary spacing glyph. One that is
-        empty next to masters that draw it cannot interpolate with them: it has
-        no points to match, so the shape collapses.
+    def _outline_masters(self, glyph_name, present_in, default_source) -> tuple[list, list]:
+        """Split the masters that have a glyph into those whose outline counts and the rest.
+
+        varLib reads an empty glyph in a non-default master as *missing* from
+        that master when the default draws it (`varLib._add_gvar`): the outline
+        interpolates across the master as if the glyph were not there. So those
+        masters take no part in the outline checks -- comparing their empty
+        outline with a drawn one reported an incompatibility the build never
+        sees -- and they leave a gap for 4.11 like a missing glyph does.
+
+        When the default itself is empty nothing is skipped, and 4.12 below
+        reports the mismatch as it is.
+        """
+        if not self._has_outline(self._own_glyph(default_source, glyph_name)):
+            return present_in, []
+        outline_in, skipped = [], []
+        for source in present_in:
+            if source is default_source or self._has_outline(self._own_glyph(source, glyph_name)):
+                outline_in.append(source)
+            else:
+                skipped.append(source)
+        return outline_in, skipped
+
+    def _skipped_outline_results(self, glyph_name, drawn, skipped) -> Iterator[CheckResult]:
+        """4.12 for a master whose empty glyph varLib leaves out of the outline.
+
+        Only the outline is left out. The advance width is read from `hmtx`,
+        where an empty glyph is an ordinary glyph, so it still takes part in
+        HVAR (only a width of 0xFFFF opts out). Built: a square in the default,
+        empty with advance 800 in the other master -- no gvar delta, a +300
+        HVAR delta. The glyph keeps its shape and its spacing moves.
+        """
+        for source in skipped:
+            glyph = self._own_glyph(source, glyph_name)
+            width = getattr(glyph, "width", None)
+            label = self._label(source)
+            yield self._make_result(
+                code=GLYPH_EMPTY_IN_SOURCE,
+                description=(
+                    f"empty here: the outline skips this master, the advance width "
+                    f"{_width(width)} does not"
+                ),
+                glyph_name=glyph_name,
+                location=label.replace(".ufo", ""),
+                is_structural=False,
+                details=(
+                    f"Glyph '{glyph_name}' has no contours and no components in {label}, but "
+                    f"the default master draws it. varLib treats the empty outline as missing "
+                    f"and interpolates the shape across this master, while the advance width "
+                    f"{_width(width)} still interpolates as a master value. Remove the glyph "
+                    f"from this master, or draw it."
+                ),
+                problem_type=GlyphProblemType.EMPTY_GLYPH,
+                raw_data={
+                    "glyphName": glyph_name,
+                    "locationType": "binary",
+                    "presentIn": [self._label(s) for s in drawn],
+                    "missingIn": [label],
+                    "width": width,
+                },
+            )
+
+    def _empty_glyph_results(self, glyph_name, drawn, empty) -> Iterator[CheckResult]:
+        """4.12: the default leaves the glyph empty, and other masters draw it.
+
+        A glyph empty everywhere is an ordinary spacing glyph. When the default
+        is empty, varLib does not skip anything (see `_outline_masters`): the
+        empty and the drawn outlines cannot be matched, so varLib leaves the
+        glyph without variations ("incompatible masters; skipping").
 
         Takes the two lists from the caller's own pass over the sources --
         fetching every glyph a second time just to look at it is the kind of
@@ -423,14 +493,15 @@ class GlyphsChecker(BaseChecker):
         for source in empty:
             yield self._make_result(
                 code=GLYPH_EMPTY_IN_SOURCE,
-                description=f"empty here, drawn in {len(drawn)} sources",
+                description=f"empty here, drawn in {len(drawn)} sources: the glyph will not vary",
                 glyph_name=glyph_name,
                 location=self._label(source).replace(".ufo", ""),
                 is_structural=False,
                 details=(
                     f"Glyph '{glyph_name}' has no contours and no components in "
                     f"{self._label(source)}, but is drawn in "
-                    f"{', '.join(self._label(s) for s in drawn[:3])}"
+                    f"{', '.join(self._label(s) for s in drawn[:3])}. With an empty default "
+                    f"varLib cannot match the outlines and leaves the glyph static."
                 ),
                 problem_type=GlyphProblemType.EMPTY_GLYPH,
                 raw_data={
@@ -855,3 +926,10 @@ class GlyphsChecker(BaseChecker):
         elif area < 0:
             return -1
         return 0
+
+
+def _width(value) -> str:
+    """An advance width as it would be written."""
+    if value is None:
+        return "?"
+    return str(int(value)) if float(value).is_integer() else f"{value:g}"

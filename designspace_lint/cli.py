@@ -66,12 +66,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-v", "--verbose", action="store_true", help="Include details")
     parser.add_argument("-q", "--quiet", action="store_true", help="Print only the tally")
     parser.add_argument("--json", action="store_true", help="Emit JSON")
+    parser.add_argument(
+        "--interpolatable",
+        action="store_true",
+        help="Also compare masters point by point (slower; start points, contour order)",
+    )
     args = parser.parse_args(argv)
 
     from . import lint_path
 
     try:
-        problems = lint_path(args.path)
+        problems = lint_path(args.path, interpolatable=args.interpolatable)
     except FileNotFoundError as exc:
         print(f"designspace-lint: {exc}", file=sys.stderr)
         return 2

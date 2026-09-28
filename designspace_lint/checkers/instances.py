@@ -29,6 +29,7 @@ from typing import Iterator
 
 from ..model import CATEGORY_INSTANCES, SEVERITY_STRUCTURAL, CheckResult
 from .base import BaseChecker, format_value as _num
+from ..raw_xml import undeclared_axis_dimensions
 from .sources import discrete_value_problems
 
 logger = logging.getLogger(__name__)
@@ -121,9 +122,10 @@ class InstancesChecker(BaseChecker):
         label_names = {label.name for label in getattr(doc, "locationLabels", None) or []}
 
         for i, instance in enumerate(doc.instances):
-            unknown_label = self._unknown_label_result(i, instance, label_names)
-            if unknown_label is not None:
-                yield unknown_label
+            # An unknown location label is reported by check_document (3.12);
+            # there is no location here to check.
+            label = getattr(instance, "locationLabel", None)
+            if label and label not in label_names:
                 continue
 
             # Get full design location
@@ -310,7 +312,27 @@ class InstancesChecker(BaseChecker):
             result = self._unknown_label_result(i, instance, label_names)
             if result is not None:
                 yield result
+        yield from self._check_stray_dimensions(doc)
         yield from self._check_discrete_values(doc)
+
+    def _check_stray_dimensions(self, doc) -> Iterator[CheckResult]:
+        """3,2 from the file: fontTools drops these dimensions while reading it."""
+        for stray in undeclared_axis_dimensions(self.path or getattr(doc, "path", None)):
+            if stray.kind == "source":
+                continue
+            where = stray.owner if stray.kind == "instance" else f"label {stray.owner}"
+            yield self._make_result(
+                code=INSTANCE_UNDEFINED_AXIS,
+                description="instance location has value for undefined axis",
+                location=where,
+                details=(
+                    f"{stray.axis} is not an axis of this designspace. fontTools ignores the "
+                    f"dimension when it reads the file, so the {stray.kind} sits at that "
+                    f"axis' default instead."
+                ),
+                is_structural=False,
+                raw_data={"axisName": stray.axis, "kind": stray.kind},
+            )
 
     def _check_discrete_values(self, doc) -> Iterator[CheckResult]:
         """3.11: instances off their discrete axis' values."""

@@ -12,6 +12,7 @@ say anything when the file is read.
 """
 
 from designspace_lint.checkers.instances import (
+    INSTANCE_UNDEFINED_AXIS,
     INSTANCE_MULTIPLE_ON_LOCATION,
     INSTANCE_NAME_REUSED,
     INSTANCE_OFF_DISCRETE_VALUES,
@@ -20,10 +21,11 @@ from designspace_lint.checkers.instances import (
 )
 from designspace_lint.checkers.sources import (
     DUPLICATE_SOURCE_LOCATION,
+    SOURCE_LOCATION_MISSING_AXIS,
     SOURCE_OFF_DISCRETE_VALUES,
     SourcesChecker,
 )
-from dsxml import ITALIC, WEIGHT, ds, source
+from dsxml import ITALIC, WEIGHT, ds, source, written
 
 WIDTH = '<axis tag="wdth" name="Width" minimum="50" default="100" maximum="200"/>'
 
@@ -121,12 +123,15 @@ def test_an_unknown_location_label_is_reported():
         instances=_instance("F", "Bold", label="Bold") + _instance("F", "Black", label="Blak"),
     )
 
-    for results in (
-        list(InstancesChecker(doc=doc).check()),
-        list(InstancesChecker(doc=doc).check_document(doc)),
-    ):
-        unknown = [r for r in results if r.code == INSTANCE_UNKNOWN_LOCATION_LABEL]
-        assert [r.raw_data["locationLabel"] for r in unknown] == ["Blak"]
+    unknown = [
+        r
+        for r in InstancesChecker(doc=doc).check_document(doc)
+        if r.code == INSTANCE_UNKNOWN_LOCATION_LABEL
+    ]
+    assert [r.raw_data["locationLabel"] for r in unknown] == ["Blak"]
+    # the per-slice check leaves it to the document-level one: reported once
+    codes = [r.code for r in InstancesChecker(doc=doc).check()]
+    assert INSTANCE_UNKNOWN_LOCATION_LABEL not in codes
 
 
 def test_one_name_at_two_locations_is_reported():
@@ -140,3 +145,39 @@ def test_one_name_at_two_locations_is_reported():
 
     assert len(results) == 1
     assert results[0].location == "F Bold"
+
+
+# --- 2.3 / 3.2, from the file itself ---------------------------------------
+
+
+def test_a_dimension_on_an_undeclared_axis_is_read_from_the_file(tmp_path):
+    """fontTools drops it while reading, so only the file still shows it.
+
+    Usually an axis that was renamed: the source quietly moves to the default
+    of the axis it was meant for.
+    """
+    doc = written(
+        tmp_path,
+        WEIGHT,
+        source("R.ufo", Weight=400) + source("B.ufo", Wieght=900),
+        instances=_instance("F", "Bold", Wieght=700),
+        labels='<label name="Heavy"><location><dimension name="Wdth" uservalue="100"/>'
+        "</location></label>",
+    )
+    assert doc.sources[1].location == {}  # the reader has already dropped it
+
+    sources = [r for r in SourcesChecker(doc=doc).check_document(doc)]
+    instances = [r for r in InstancesChecker(doc=doc).check_document(doc)]
+
+    assert [(r.code, r.location, r.raw_data["axisName"]) for r in sources] == [
+        (SOURCE_LOCATION_MISSING_AXIS, "B.ufo", "Wieght")
+    ]
+    assert [(r.code, r.location) for r in instances] == [
+        (INSTANCE_UNDEFINED_AXIS, "F Bold"),
+        (INSTANCE_UNDEFINED_AXIS, "label Heavy"),
+    ]
+
+
+def test_a_clean_file_has_no_stray_dimensions(tmp_path):
+    doc = written(tmp_path, WEIGHT, source("R.ufo", Weight=400))
+    assert list(SourcesChecker(doc=doc).check_document(doc)) == []

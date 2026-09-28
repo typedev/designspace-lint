@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..axis_span import design_location
+from ..raw_xml import undeclared_axis_dimensions
 from ..model import CATEGORY_SOURCES, SEVERITY_STRUCTURAL, CheckResult
 from .base import BaseChecker, format_value as _num
 
@@ -208,10 +209,31 @@ class SourcesChecker(BaseChecker):
                 )
 
     def check_document(self, doc) -> Iterator[CheckResult]:
-        """2.10, on the whole document: sources off their discrete axis' values.
+        """The source checks that read the whole document, once per run.
 
-        Runs before the split, since after it these sources are simply gone.
+        2.3 reads the file itself: fontTools drops a dimension on an unknown
+        axis while reading, so the parsed document no longer has it. 2.10
+        runs before the split, since after it those sources are simply gone.
         """
+        for stray in undeclared_axis_dimensions(self.path or getattr(doc, "path", None)):
+            if stray.kind != "source":
+                continue
+            yield self._make_result(
+                code=SOURCE_LOCATION_MISSING_AXIS,
+                description=(
+                    f"source location names an axis the designspace does not have: {stray.axis}"
+                ),
+                location=stray.owner,
+                details=(
+                    "fontTools ignores a dimension on an undeclared axis when it reads the "
+                    "file, so this value is lost and the source sits at that axis' default. "
+                    "Usually an axis that was renamed."
+                ),
+                is_structural=False,
+                severity=SEVERITY_STRUCTURAL,
+                raw_data={"source": stray.owner, "axisName": stray.axis},
+            )
+
         for source, axis, value in discrete_value_problems(doc, doc.sources):
             source_name = source.name or source.filename or "unknown"
             values = ", ".join(_num(v) for v in axis.values)

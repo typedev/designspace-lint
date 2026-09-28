@@ -22,17 +22,39 @@ def source(filename, **location):
     return f'<source filename="{filename}" name="{filename}"><location>{dims}</location></source>'
 
 
-def ds(axes, sources="", *, instances="", rules="", mappings="", labels="", fmt="5.0"):
-    """A document from its parts, each a string of XML elements."""
-    xml = (
+def xml(
+    axes,
+    sources="",
+    *,
+    instances="",
+    rules="",
+    mappings="",
+    labels="",
+    variable_fonts="",
+    fmt="5.0",
+):
+    """The document's text, from its parts, each a string of XML elements."""
+    return (
         f'<?xml version="1.0" encoding="UTF-8"?><designspace format="{fmt}">'
         f"<axes>{axes}{mappings}</axes>"
         + (f"<labels>{labels}</labels>" if labels else "")
         + (f"<rules>{rules}</rules>" if rules else "")
         + f"<sources>{sources}</sources>"
         + (f"<instances>{instances}</instances>" if instances else "")
+        + (f"<variable-fonts>{variable_fonts}</variable-fonts>" if variable_fonts else "")
         + "</designspace>"
     )
-    doc = DesignSpaceDocument.fromstring(xml)
+
+
+def ds(*parts, **kwargs):
+    """The document, read by fontTools from `xml(...)`; its path goes nowhere."""
+    doc = DesignSpaceDocument.fromstring(xml(*parts, **kwargs))
     doc.path = "/tmp/fake/test.designspace"
     return doc
+
+
+def written(tmp_path, *parts, **kwargs):
+    """The document written to disk first, for the checks that re-read the file."""
+    path = tmp_path / "test.designspace"
+    path.write_text(xml(*parts, **kwargs))
+    return DesignSpaceDocument.fromfile(str(path))

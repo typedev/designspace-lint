@@ -17,6 +17,10 @@ from designspace_lint.checkers.axes import (
     DISCRETE_DEFAULT_NOT_IN_VALUES,
     NO_AXES,
     NO_CONTINUOUS_AXIS,
+    VF_RANGE_ON_DISCRETE_AXIS,
+    VF_SUBSET_SELECTS_NOTHING,
+    VF_UNKNOWN_AXIS,
+    VF_ZERO_DEFAULT_IGNORED,
     AxesChecker,
 )
 from designspace_lint.model import SEVERITY_STRUCTURAL
@@ -118,3 +122,62 @@ def test_a_default_mapping_that_moves_nothing_is_harmless():
         _mapping({"Weight": 900}, {"Width": 150}),
     )
     assert AVAR2_MAPPING_FROM_DEFAULT not in _codes(doc)
+
+
+# --- <variable-fonts> -------------------------------------------------------
+
+
+def _vf(name, *subsets):
+    return f'<variable-font name="{name}"><axis-subsets>{"".join(subsets)}</axis-subsets></variable-font>'
+
+
+def _range(axis, lo=None, default=None, hi=None):
+    if lo is None:
+        return f'<axis-subset name="{axis}"/>'
+    return (
+        f'<axis-subset name="{axis}" userminimum="{lo}" userdefault="{default}" '
+        f'usermaximum="{hi}"/>'
+    )
+
+
+def _value(axis, value):
+    return f'<axis-subset name="{axis}" uservalue="{value}"/>'
+
+
+def _vf_codes(*fonts, axes=WEIGHT + ITALIC):
+    return [r.code for r in _results(ds(axes, variable_fonts="".join(fonts)))]
+
+
+def test_well_formed_variable_fonts_are_fine():
+    assert _vf_codes(_vf("Upright", _range("Weight"), _value("Italic", 0))) == []
+
+
+def test_no_variable_fonts_element_is_fine():
+    """fontTools derives the fonts itself then; nothing to check."""
+    assert _results(ds(WEIGHT + ITALIC)) == []
+
+
+def test_a_subset_on_an_unknown_axis_is_reported():
+    """Splitting raises "Cannot find axis named ..." on it."""
+    assert _vf_codes(_vf("A", _range("Wieght"))) == [VF_UNKNOWN_AXIS]
+
+
+def test_a_range_over_a_discrete_axis_is_reported():
+    """Splitting raises "Cannot select a range over ...": use a uservalue."""
+    assert _vf_codes(_vf("A", _range("Weight"), _range("Italic"))) == [VF_RANGE_ON_DISCRETE_AXIS]
+
+
+def test_a_subset_that_selects_nothing_is_reported():
+    """The variable font falls out of the split and is never built, silently."""
+    codes = _vf_codes(
+        _vf("OffValues", _range("Weight"), _value("Italic", 2)),
+        _vf("OffRange", _range("Weight", 950, 950, 1000), _value("Italic", 0)),
+    )
+    assert codes == [VF_SUBSET_SELECTS_NOTHING, VF_SUBSET_SELECTS_NOTHING]
+
+
+def test_a_zero_userdefault_is_read_as_not_set():
+    """`userDefault or axis.default` in getVFUserRegion: 0 falls through."""
+    axis = '<axis tag="slnt" name="Slant" minimum="-12" default="-6" maximum="0"/>'
+    codes = _vf_codes(_vf("A", _range("Slant", -12, 0, 0)), axes=axis)
+    assert codes == [VF_ZERO_DEFAULT_IGNORED]

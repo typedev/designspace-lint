@@ -28,6 +28,7 @@ A GUI that needs them elsewhere marshals them itself -- that is font-rover's
 
 from __future__ import annotations
 
+import copy
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator
@@ -57,6 +58,12 @@ PHASES = [
     ("features", "Checking features..."),
     ("glyphorder", "Checking glyph order..."),
 ]
+
+# Opt-in: fontTools' varLib.interpolatable over the masters already open. It
+# finds what a structural comparison cannot -- start points, contour order,
+# shapes that thin out or kink halfway -- and costs about as much again as
+# the rest of the run, so it runs only when asked for.
+INTERPOLATION_PHASE = ("interpolation", "Checking point correspondence...")
 
 # 0.1: a check raised and the rest of its phase went unchecked. The file
 # category is where problems with the run itself live.
@@ -103,6 +110,7 @@ class Linter:
         designspace: "DesignSpace | None" = None,
         path: Path | None = None,
         cancel: Any = None,
+        interpolatable: bool = False,
     ):
         """
         Args:
@@ -113,15 +121,25 @@ class Linter:
             cancel: Anything with ``is_set()`` -- a ``threading.Event``, say --
                 polled between phases and between glyphs so a caller running
                 this in a thread can stop it.
+            interpolatable: also run the point-correspondence phase (4.14 to
+                4.18), right after the glyph checks.
         """
         self._entry = designspace
         self._path = path or (designspace.path if designspace else None)
         self._cancel = cancel
         self._checkers: dict[str, type["BaseChecker"]] = {}
         self._structural_problem_found = False
+        self._phases = list(PHASES)
+        if interpolatable:
+            glyphs_at = [p[0] for p in self._phases].index("glyphs")
+            self._phases.insert(glyphs_at + 1, INTERPOLATION_PHASE)
 
         # Register all checkers
         self._register_checkers()
+        if interpolatable:
+            from .checkers.interpolation import InterpolationChecker
+
+            self._checkers["interpolation"] = InterpolationChecker
 
     @property
     def _cancelled(self) -> bool:
@@ -249,7 +267,7 @@ class Linter:
             CheckResult for each problem found
         """
         self._structural_problem_found = False
-        total_phases = len(PHASES)
+        total_phases = len(self._phases)
 
         # Check if we have discrete axes
         has_discrete = self._has_discrete_axes()
@@ -275,7 +293,7 @@ class Linter:
         total_work = (total_phases - 1) + glyph_count  # -1 because glyphs counted separately
         current_work = 0
 
-        for i, (phase_id, phase_name) in enumerate(PHASES):
+        for i, (phase_id, phase_name) in enumerate(self._phases):
             # Check for cancellation
             if self._cancelled:
                 logger.info("Check cancelled")
@@ -339,6 +357,13 @@ class Linter:
                     logger.info(f"Stopping after {phase_id}: structural problems")
                     break
 
+            # The checks that read the whole document run once, here, as they
+            # do before a split -- so each is reported once in either mode.
+            if phase_id == "geometry":
+                doc = self._get_doc()
+                if doc is not None:
+                    yield from self._run_document_checks(doc)
+
     def _estimate_glyph_count(self) -> int:
         """Estimate number of glyphs to check."""
         if self._entry is None:
@@ -366,8 +391,8 @@ class Linter:
         if doc is None:
             return
 
-        doc_phases = [p for p in PHASES if p[0] in DOCUMENT_PHASES]
-        slice_phases = [p for p in PHASES if p[0] not in DOCUMENT_PHASES]
+        doc_phases = [p for p in self._phases if p[0] in DOCUMENT_PHASES]
+        slice_phases = [p for p in self._phases if p[0] not in DOCUMENT_PHASES]
 
         # The document-level phases run once, on the whole document.
         self._structural_problem_found = False
@@ -398,8 +423,17 @@ class Linter:
         # slice, and instances whose location cannot be resolved at all.
         yield from self._run_document_checks(doc)
 
+        # Slicing needs only the discrete axes. The declared variable fonts
+        # are resolved during the split as well, and one that names an unknown
+        # axis or a range over a discrete one makes it raise (1.19 / 1.20,
+        # already reported) -- so split a copy that declares none.
+        to_split = doc
+        if getattr(doc, "variableFonts", None):
+            to_split = copy.copy(doc)
+            to_split.variableFonts = []
+
         try:
-            sub_docs = list(splitInterpolable(doc))
+            sub_docs = list(splitInterpolable(to_split))
         except Exception as e:
             # An instance naming an unknown location label makes the split
             # itself raise; without it there are no slices to check.
