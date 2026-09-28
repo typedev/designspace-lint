@@ -57,7 +57,16 @@ from .model import (
     SourceInfo,
     StartPointDifference,
 )
+from .checkers.base import label_for_source
+from .codes import CODES, CodeInfo, code_info
+from .glyph_order import dedupe_glyph_order, raw_glyph_order
+from .model import effective_severity
 from .protocols import DesignSpaceLike, SourceLike
+from .raw_xml import (
+    StrayDimension,
+    undeclared_axis_dimensions,
+    undeclared_axis_dimensions_from_string,
+)
 
 __version__ = "0.5.0"
 
@@ -66,7 +75,16 @@ __version__ = "0.5.0"
 Problem = CheckResult
 
 
-def iter_lint(designspace, *, on_phase=None, on_progress=None, cancel=None, interpolatable=False):
+def iter_lint(
+    designspace,
+    *,
+    on_phase=None,
+    on_progress=None,
+    cancel=None,
+    interpolatable=False,
+    phases=None,
+    glyphs=None,
+):
     """Yield problems one at a time, as they are found.
 
     Args:
@@ -78,16 +96,32 @@ def iter_lint(designspace, *, on_phase=None, on_progress=None, cancel=None, inte
         interpolatable: also compare the masters point by point with
             fontTools' ``varLib.interpolatable`` (4.14-4.18). Slower; install
             ``designspace-lint[interpolatable]`` for glyphs of 7+ contours.
+        phases: run only these phases (ids from :data:`PHASES`); "file" and
+            "geometry" always run.
+        glyphs: check only these glyphs in the glyph phases.
 
     Yields:
         :class:`CheckResult`, in phase order.
     """
-    linter = Linter(designspace=designspace, cancel=cancel, interpolatable=interpolatable)
+    linter = Linter(
+        designspace=designspace,
+        cancel=cancel,
+        interpolatable=interpolatable,
+        phases=phases,
+        glyphs=glyphs,
+    )
     yield from linter.run(on_phase=on_phase, on_progress=on_progress)
 
 
 def lint(
-    designspace, *, on_phase=None, on_progress=None, cancel=None, interpolatable=False
+    designspace,
+    *,
+    on_phase=None,
+    on_progress=None,
+    cancel=None,
+    interpolatable=False,
+    phases=None,
+    glyphs=None,
 ) -> list[CheckResult]:
     """Every problem in a designspace whose fonts are already open."""
     return list(
@@ -97,12 +131,21 @@ def lint(
             on_progress=on_progress,
             cancel=cancel,
             interpolatable=interpolatable,
+            phases=phases,
+            glyphs=glyphs,
         )
     )
 
 
 def lint_path(
-    path, *, on_phase=None, on_progress=None, cancel=None, interpolatable=False
+    path,
+    *,
+    on_phase=None,
+    on_progress=None,
+    cancel=None,
+    interpolatable=False,
+    phases=None,
+    glyphs=None,
 ) -> list[CheckResult]:
     """Open a .designspace file and check it.
 
@@ -115,6 +158,8 @@ def lint_path(
         on_progress=on_progress,
         cancel=cancel,
         interpolatable=interpolatable,
+        phases=phases,
+        glyphs=glyphs,
     )
 
 
@@ -143,6 +188,17 @@ __all__ = [
     "AnchorDifference",
     "AxisGap",
     "axis_span_gaps",
+    # For consumers
+    "CODES",
+    "CodeInfo",
+    "code_info",
+    "effective_severity",
+    "label_for_source",
+    "raw_glyph_order",
+    "dedupe_glyph_order",
+    "undeclared_axis_dimensions",
+    "undeclared_axis_dimensions_from_string",
+    "StrayDimension",
     # Vocabulary
     "CATEGORY_FILE",
     "CATEGORY_GEOMETRY",

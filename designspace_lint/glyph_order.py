@@ -28,7 +28,7 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
-def _raw_glyph_order(font: Any) -> Optional[list[str]]:
+def raw_glyph_order(font: Any) -> Optional[list[str]]:
     """Read glyphOrder around the fontParts normalizer.
 
     The defcon/ufoLib2 object underneath stores the list as written, so it
@@ -46,7 +46,7 @@ def _raw_glyph_order(font: Any) -> Optional[list[str]]:
         return None
 
 
-def _first_wins(order: list[str]) -> list[str]:
+def dedupe_glyph_order(order: list[str]) -> list[str]:
     """Drop repeated names, keeping the position of the first occurrence."""
     seen: set[str] = set()
     kept: list[str] = []
@@ -85,7 +85,7 @@ def safe_glyph_order(font: Any) -> list[str]:
     except ValueError:
         # fontParts refused the list -- go around it to the object underneath,
         # which stores it as written.
-        raw = _raw_glyph_order(font) or []
+        raw = raw_glyph_order(font) or []
     except Exception:  # pragma: no cover - defensive
         return []
 
@@ -95,7 +95,7 @@ def safe_glyph_order(font: Any) -> list[str]:
     # Collapse repeats even when the getter did not object: defcon and ufoLib2
     # hand the list back unvalidated, so the caller would otherwise place the
     # same glyph twice depending on which object it happened to hold.
-    kept = _first_wins(raw)
+    kept = dedupe_glyph_order(raw)
     if len(kept) != len(raw):
         logger.warning(
             "glyphOrder lists %d name(s) more than once (%s) - keeping the first "
@@ -163,3 +163,8 @@ __all__ = [
     "owns_glyph",
     "extras_for_subdoc",
 ]
+
+
+# The names these had before 0.6. Font-Rover imported them; they go in 0.7.
+_raw_glyph_order = raw_glyph_order
+_first_wins = dedupe_glyph_order

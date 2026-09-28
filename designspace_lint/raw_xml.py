@@ -39,6 +39,10 @@ def undeclared_axis_dimensions(path) -> list[StrayDimension]:
 
     Empty when there is no file to read or it does not parse: whether the
     document can be read at all is 0.0's business, not this.
+
+    An editor can call this before saving over the file: fontTools'
+    `DesignSpaceDocument.write()` writes what it read, and it read these
+    dimensions as nothing, so saving drops them for good.
     """
     if not path:
         return []
@@ -47,7 +51,20 @@ def undeclared_axis_dimensions(path) -> list[StrayDimension]:
     except (OSError, ET.ParseError) as exc:
         logger.debug(f"cannot re-read {path}: {exc}")
         return []
+    return _stray_dimensions(root)
 
+
+def undeclared_axis_dimensions_from_string(text: str) -> list[StrayDimension]:
+    """The same, for designspace XML held as text."""
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as exc:
+        logger.debug(f"cannot parse designspace text: {exc}")
+        return []
+    return _stray_dimensions(root)
+
+
+def _stray_dimensions(root) -> list[StrayDimension]:
     # Discrete axes are <axis values="..."> too.
     axes = {axis.get("name") for axis in root.iterfind("axes/axis")}
 

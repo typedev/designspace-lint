@@ -33,7 +33,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator
 
-from .model import CATEGORY_FILE, SEVERITY_STRUCTURAL, CheckResult
+from .model import CATEGORY_FILE, SEVERITY_STRUCTURAL, CheckResult, effective_severity
 
 if TYPE_CHECKING:
     from fontTools.designspaceLib import DesignSpaceDocument
@@ -75,6 +75,13 @@ PHASE_FAILED = 1
 # so asking a slice whether it has axes answers a different question.
 DOCUMENT_PHASES = ("file", "geometry", "labels")
 
+# A scoped run (`phases=`) always includes these: whether the document can be
+# read at all decides whether anything else is worth running.
+ALWAYS_RUN = ("file", "geometry")
+
+# The phases a `glyphs=` restriction applies to.
+GLYPH_PHASES = ("glyphs", "interpolation")
+
 
 def phase_failed(phase_id: str, exc: Exception, where: str = "") -> CheckResult:
     """The finding for a check that raised instead of finishing."""
@@ -112,6 +119,8 @@ class Linter:
         path: Path | None = None,
         cancel: Any = None,
         interpolatable: bool = False,
+        phases: "list[str] | None" = None,
+        glyphs: "list[str] | None" = None,
     ):
         """
         Args:
@@ -124,6 +133,11 @@ class Linter:
                 this in a thread can stop it.
             interpolatable: also run the point-correspondence phase (4.14 to
                 4.18), right after the glyph checks.
+            phases: run only these phases, by id (see `PHASES`); "file" and
+                "geometry" always run. The whole-document source and instance
+                checks run with the "sources" and "instances" phases.
+            glyphs: check only these glyphs in the glyph phases ("glyphs",
+                "interpolation"). The engine still splits by discrete axes.
         """
         self._entry = designspace
         self._path = path or (designspace.path if designspace else None)
@@ -134,6 +148,15 @@ class Linter:
         if interpolatable:
             glyphs_at = [p[0] for p in self._phases].index("glyphs")
             self._phases.insert(glyphs_at + 1, INTERPOLATION_PHASE)
+
+        self._selected: set[str] | None = None
+        if phases is not None:
+            known = {p[0] for p in self._phases}
+            unknown = [p for p in phases if p not in known]
+            if unknown:
+                raise ValueError(f"unknown phase(s): {', '.join(unknown)}; known: {sorted(known)}")
+            self._selected = set(phases) | set(ALWAYS_RUN)
+        self._glyphs: set[str] | None = set(glyphs) if glyphs is not None else None
 
         # Register all checkers
         self._register_checkers()
@@ -242,7 +265,9 @@ class Linter:
         if checker_cls is None:
             return None
 
-        return checker_cls(entry=self._entry, path=self._path)
+        if not self._wants(phase_id):
+            return None
+        return self._restrict(checker_cls(entry=self._entry, path=self._path), phase_id)
 
     def run(
         self,
@@ -253,11 +278,25 @@ class Linter:
 
         Blocks the calling thread; the callbacks fire on it too.
         """
-        yield from self._run_checks(on_phase=on_phase, on_progress=on_progress)
+        for result in self._run_checks(on_phase=on_phase, on_progress=on_progress):
+            # Every result leaves the engine with its severity spelled out, so
+            # a consumer never has to work out the category defaults itself.
+            result.severity = effective_severity(result)
+            yield result
 
     def check_sync(self) -> list[CheckResult]:
         """All problems as a list. Kept for callers that want them at once."""
-        return list(self._run_checks(on_phase=None))
+        return list(self.run())
+
+    def _wants(self, phase_id: str) -> bool:
+        """Whether a scoped run includes this phase."""
+        return self._selected is None or phase_id in self._selected
+
+    def _restrict(self, checker, phase_id: str):
+        """Hand a `glyphs=` restriction to the checkers it applies to."""
+        if checker is not None and self._glyphs is not None and phase_id in GLYPH_PHASES:
+            checker.only_glyphs = set(self._glyphs)
+        return checker
 
     def _run_checks(
         self,
@@ -330,8 +369,11 @@ class Linter:
                         msg = f"Checking glyphs ({checked}/{total})"
                         on_progress(current, total_work, msg)
 
-                    glyphs_checker = self._checkers["glyphs"](
-                        entry=self._entry, path=self._path, on_glyph_progress=glyph_progress
+                    glyphs_checker = self._restrict(
+                        self._checkers["glyphs"](
+                            entry=self._entry, path=self._path, on_glyph_progress=glyph_progress
+                        ),
+                        "glyphs",
                     )
                     for result in glyphs_checker.check():
                         if self._cancelled:
@@ -527,6 +569,8 @@ class Linter:
         from .checkers.sources import SourcesChecker
 
         for phase_id, checker_cls in (("sources", SourcesChecker), ("instances", InstancesChecker)):
+            if not self._wants(phase_id):
+                continue
             checker = checker_cls(entry=self._entry, doc=doc, path=self._path)
             try:
                 yield from checker.check_document(doc)
@@ -557,7 +601,9 @@ class Linter:
         filtered_entry = self._filter_entry_for_subdoc(sub_doc)
 
         # Create checker with filtered entry and sub-doc
-        return checker_cls(entry=filtered_entry, doc=sub_doc)
+        if not self._wants(phase_id):
+            return None
+        return self._restrict(checker_cls(entry=filtered_entry, doc=sub_doc), phase_id)
 
     def _filter_entry_for_subdoc(self, sub_doc: "DesignSpaceDocument") -> "DesignSpace | None":
         """

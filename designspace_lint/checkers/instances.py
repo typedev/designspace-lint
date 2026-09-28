@@ -147,7 +147,11 @@ class InstancesChecker(BaseChecker):
                     location=f"instance {i}",
                     details=details,
                     is_structural=False,
-                    raw_data={"instance": i, "path": getattr(instance, "path", None)},
+                    raw_data={
+                        "instance": i,
+                        "instanceIndex": i,
+                        "path": getattr(instance, "path", None),
+                    },
                 )
             else:
                 # Check location values against axis ranges
@@ -219,7 +223,7 @@ class InstancesChecker(BaseChecker):
                     location=f"instance {i}",
                     details=details,
                     is_structural=False,
-                    raw_data={"instance": i},
+                    raw_data={"instance": i, "instanceIndex": i, "instanceName": instance.name},
                 )
 
             # 3,7: Missing style name
@@ -231,7 +235,7 @@ class InstancesChecker(BaseChecker):
                     location=f"instance {i}",
                     details=details,
                     is_structural=False,
-                    raw_data={"instance": i},
+                    raw_data={"instance": i, "instanceIndex": i, "instanceName": instance.name},
                 )
 
             # 3,8: Missing output path (filename)
@@ -243,7 +247,7 @@ class InstancesChecker(BaseChecker):
                     location=f"{instance.familyName} {instance.styleName}",
                     details=details,
                     is_structural=False,
-                    raw_data={"instance": i},
+                    raw_data={"instance": i, "instanceIndex": i, "instanceName": instance.name},
                 )
 
         # 3,4: Multiple instances on location (ONE problem per location, not per instance)
@@ -299,7 +303,12 @@ class InstancesChecker(BaseChecker):
             ),
             is_structural=False,
             severity=SEVERITY_STRUCTURAL,
-            raw_data={"instance": i, "locationLabel": label},
+            raw_data={
+                "instance": i,
+                "instanceIndex": i,
+                "instanceName": instance.name,
+                "locationLabel": label,
+            },
         )
 
     def check_document(self, doc) -> Iterator[CheckResult]:

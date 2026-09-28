@@ -160,3 +160,24 @@ class CheckResult:
     start_point_differences: list[StartPointDifference] = field(default_factory=list)
     anchor_differences: list[AnchorDifference] = field(default_factory=list)
     suggested_fix: str = ""
+
+
+# Categories whose findings are design problems unless a check says otherwise.
+_DESIGN_CATEGORIES = (CATEGORY_GLYPHS, CATEGORY_KERNING, CATEGORY_FONTINFO, CATEGORY_GLYPHORDER)
+
+
+def effective_severity(result: CheckResult) -> int:
+    """The severity to show for a finding: structural, design or information.
+
+    A check that knows better sets `severity` itself; otherwise a structural
+    finding is structural, and the rest take their category's default.
+    Results that come through the engine already carry it explicitly; this is
+    for results a caller got from a checker directly.
+    """
+    if result.severity is not None:
+        return result.severity
+    if result.is_structural:
+        return SEVERITY_STRUCTURAL
+    if result.category in _DESIGN_CATEGORIES:
+        return SEVERITY_DESIGN
+    return SEVERITY_INFO

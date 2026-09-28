@@ -16,33 +16,14 @@ import argparse
 import json
 import sys
 
-from .model import CATEGORY_NAMES, SEVERITY_DESIGN, SEVERITY_STRUCTURAL
+from .model import CATEGORY_NAMES, SEVERITY_DESIGN, SEVERITY_STRUCTURAL, effective_severity
 
 SEVERITY_LABEL = {SEVERITY_STRUCTURAL: "error", SEVERITY_DESIGN: "warn"}
 
 
 def _severity(problem) -> int:
     """Same rule the application shows: structural, design, or information."""
-    from .model import (
-        CATEGORY_FONTINFO,
-        CATEGORY_GLYPHORDER,
-        CATEGORY_GLYPHS,
-        CATEGORY_KERNING,
-        SEVERITY_INFO,
-    )
-
-    if problem.severity is not None:
-        return problem.severity
-    if problem.is_structural:
-        return SEVERITY_STRUCTURAL
-    if problem.category in (
-        CATEGORY_GLYPHS,
-        CATEGORY_KERNING,
-        CATEGORY_FONTINFO,
-        CATEGORY_GLYPHORDER,
-    ):
-        return SEVERITY_DESIGN
-    return SEVERITY_INFO
+    return effective_severity(problem)
 
 
 def _as_dict(problem) -> dict:

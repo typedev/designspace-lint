@@ -158,6 +158,8 @@ class InterpolationChecker(GlyphsChecker):
                 upem = 1000
 
             glyph_names = sorted(self._own_keys(default_source))
+            if self.only_glyphs is not None:
+                glyph_names = [name for name in glyph_names if name in self.only_glyphs]
             unchecked = []
             for i, glyph_name in enumerate(glyph_names):
                 # One glyph per call: an error escaping the generator ends it,

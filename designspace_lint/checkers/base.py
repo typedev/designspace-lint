@@ -360,3 +360,12 @@ class BaseChecker(ABC):
             else:
                 parts.append(f"{axis}:{value:.1f}")
         return ", ".join(parts)
+
+
+def label_for_source(source) -> str:
+    """How findings name a master: the UFO file, with its layer or style name.
+
+    Two layers of one UFO read differently, so a consumer matching a finding to
+    a master by this label gets the right one.
+    """
+    return BaseChecker._source_label(source)

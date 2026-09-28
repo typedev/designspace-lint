@@ -192,3 +192,19 @@ def test_any_localised_style_name_keeps_the_name():
         '<dimension name="Weight" uservalue="700"/></location></instance>'
     )
     assert INSTANCE_NAME_REPLACED not in _codes(_weight(REGULAR, BOLD), instance)
+
+
+def test_a_renamed_instance_can_be_found_without_parsing_its_location():
+    """Consumers locate the instance by name and position, not by the label."""
+    instance = (
+        '<instance name="Fam-Heavy" familyname="Fam" stylename="Heavy"><location>'
+        '<dimension name="Weight" uservalue="700"/></location></instance>'
+    )
+    results = [
+        r
+        for r in _check(_weight(REGULAR, BOLD), _instance("Regular", 400) + instance)
+        if r.code == INSTANCE_NAME_REPLACED
+    ]
+    assert [(r.raw_data["instanceName"], r.raw_data["instanceIndex"]) for r in results] == [
+        ("Fam-Heavy", 1)
+    ]

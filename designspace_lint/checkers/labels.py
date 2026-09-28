@@ -306,16 +306,18 @@ class LabelsChecker(BaseChecker):
         locations = []
         default = {axis.name: axis.default for axis in doc.axes}
         locations.append(("the default location", default, None))
-        for instance in doc.instances:
+        for index, instance in enumerate(doc.instances):
             try:
                 location = instance.getFullUserLocation(doc)
             except Exception:
                 continue  # an unknown location label: 3.12
             name = " ".join(n for n in (instance.familyName, instance.styleName) if n)
-            locations.append((name or "an unnamed instance", location, instance))
+            locations.append((name or "an unnamed instance", location, (index, instance)))
 
         elided_everywhere = []
-        for where, location, instance in locations:
+        for where, location, indexed in locations:
+            index, instance = indexed if indexed else (None, None)
+            locator = {"instanceName": instance.name, "instanceIndex": index} if instance else {}
             for axis in labelled:
                 value = location.get(axis.name, axis.default)
                 if not any(_matches(label, value) for label in axis.axisLabels):
@@ -331,7 +333,7 @@ class LabelsChecker(BaseChecker):
                         ),
                         is_structural=False,
                         severity=SEVERITY_DESIGN,
-                        raw_data={"axisName": axis.name, "value": value},
+                        raw_data={"axisName": axis.name, "value": value, **locator},
                     )
             try:
                 stat = getStatNames(doc, location).styleNames.get("en")
@@ -376,7 +378,11 @@ class LabelsChecker(BaseChecker):
                 ),
                 is_structural=False,
                 severity=SEVERITY_STRUCTURAL if empty else SEVERITY_DESIGN,
-                raw_data={"styleName": instance.styleName, "statStyleName": stat},
+                raw_data={
+                    "styleName": instance.styleName,
+                    "statStyleName": stat,
+                    **locator,
+                },
             )
 
         if elided_everywhere and not doc.elidedFallbackName:

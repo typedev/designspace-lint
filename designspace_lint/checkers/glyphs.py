@@ -23,6 +23,7 @@ Licensed under the Apache License, Version 2.0
 from __future__ import annotations
 
 import logging
+import warnings
 from collections import defaultdict
 from typing import TYPE_CHECKING, Iterator
 
@@ -166,9 +167,12 @@ class GlyphsChecker(BaseChecker):
         self._font_cache: dict[str, "RFont"] = {}
         self._on_glyph_progress = on_glyph_progress
 
+    #: Set by the engine for `lint(..., glyphs=[...])`: check only these.
+    only_glyphs: set[str] | None = None
+
     def check(self) -> Iterator[CheckResult]:
         """Run all glyph compatibility checks."""
-        yield from self._check_slices(glyph_names=None)
+        yield from self._check_slices(glyph_names=self.only_glyphs)
 
     def check_glyphs(self, glyph_names: set[str]) -> Iterator[CheckResult]:
         """
@@ -182,6 +186,12 @@ class GlyphsChecker(BaseChecker):
         Yields:
             CheckResult for each problem found
         """
+        warnings.warn(
+            "GlyphsChecker.check_glyphs() is deprecated and goes in 0.7; use "
+            'lint(designspace, phases=["glyphs"], glyphs=[...])',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         yield from self._check_slices(glyph_names=set(glyph_names))
 
     def _slices(self) -> list[tuple[dict, object, list, list]]:
@@ -358,6 +368,7 @@ class GlyphsChecker(BaseChecker):
                     "glyphName": glyph_name,
                     "locationType": "binary",
                     "axis": gap.axis,
+                    "axisName": gap.axis,
                     "side": gap.side,
                     "required": gap.required,
                     "covered": gap.covered,

@@ -181,6 +181,7 @@ class SourcesChecker(BaseChecker):
                     is_structural=True,
                     raw_data={
                         "path": source.path,
+                        "sourceName": source_name,
                         "location": source.location,
                         "duplicateOf": seen_locations[loc_tuple],
                     },
@@ -231,7 +232,11 @@ class SourcesChecker(BaseChecker):
                 ),
                 is_structural=False,
                 severity=SEVERITY_STRUCTURAL,
-                raw_data={"source": stray.owner, "axisName": stray.axis},
+                raw_data={
+                    "source": stray.owner,
+                    "sourceName": stray.owner,
+                    "axisName": stray.axis,
+                },
             )
 
         for source, axis, value in discrete_value_problems(doc, doc.sources):
@@ -251,7 +256,12 @@ class SourcesChecker(BaseChecker):
                 ),
                 is_structural=False,
                 severity=SEVERITY_STRUCTURAL,
-                raw_data={"path": source.path, "axisName": axis.name, "value": value},
+                raw_data={
+                    "path": source.path,
+                    "sourceName": source_name,
+                    "axisName": axis.name,
+                    "value": value,
+                },
             )
 
     def _check_source_file(self, source, source_name: str) -> Iterator[CheckResult]:
@@ -271,7 +281,7 @@ class SourcesChecker(BaseChecker):
                 description=f"Source file not found: {path}",
                 location=source_name,
                 **CANNOT_OPEN,
-                raw_data={"path": str(path)},
+                raw_data={"path": str(path), "sourceName": source_name},
             )
             return
 
@@ -284,7 +294,7 @@ class SourcesChecker(BaseChecker):
                     description=f"Source is not a UFO directory: {path}",
                     location=source_name,
                     **CANNOT_OPEN,
-                    raw_data={"path": str(path)},
+                    raw_data={"path": str(path), "sourceName": source_name},
                 )
             return
 
@@ -296,7 +306,7 @@ class SourcesChecker(BaseChecker):
                 description=f"Source missing metainfo.plist: {path}",
                 location=source_name,
                 **CANNOT_OPEN,
-                raw_data={"path": str(path)},
+                raw_data={"path": str(path), "sourceName": source_name},
             )
 
     def _check_source_location(
