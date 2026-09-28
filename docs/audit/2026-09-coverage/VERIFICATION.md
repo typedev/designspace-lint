@@ -53,7 +53,7 @@ which the check already knew.
 
 ## Not re-verified
 
-Catalog rows outside what 0.2.0 changes, the avar2 renderer rows, and the
+Catalog rows outside what 0.5.0 changes, the avar2 renderer rows, and the
 ~40 sub-claims the catalog itself marks UNVERIFIED.
 
 ## Second pass: avar2 and labels (28 September 2026)

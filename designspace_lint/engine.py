@@ -16,7 +16,7 @@ slice they came from.
 
 A check that raises does not take the run down, and it does not vanish into a
 log line either: it becomes a finding of its own (0.1), so the exit code says
-that part of the document went unchecked. Before 0.2 such a crash was only
+that part of the document went unchecked. Before 0.5 such a crash was only
 logged, and three of them -- a rule without a conditionset, an unnamed
 duplicate instance, an unknown location label -- each silently dropped the
 rest of a phase.
