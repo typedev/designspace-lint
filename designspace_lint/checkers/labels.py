@@ -16,7 +16,8 @@ which ufo2ft calls):
 - instance names. Splitting the document (`splitInterpolable(makeNames=True)`)
   names every instance from the labels at its location
   (`designspaceLib.statNames.getStatNames`), and keeps the author's style name
-  only where it is given with `xml:lang="en"`: a plain `stylename` is replaced
+  only where the instance has localised style names of its own (any language,
+  usually `xml:lang="en"`): a plain `stylename` alone is replaced
   in fvar by the name the labels spell. When every label there is elidable and
   the document has no `elidedfallbackname`, that name is empty.
 
@@ -341,7 +342,11 @@ class LabelsChecker(BaseChecker):
                 elided_everywhere.append(where)
             if instance is None or not instance.styleName:
                 continue
-            if "en" in (instance.localisedStyleName or {}) or stat is None:
+            # The split replaces the instance's localised names with the label
+            # ones only when it has none at all (`split.py`: `localisedStyleName
+            # or statNames.styleNames`); with any language given, fvar adds
+            # "en" from the stylename itself (`varLib._add_fvar`).
+            if instance.localisedStyleName or stat is None:
                 continue
             if stat == instance.styleName:
                 continue
@@ -357,7 +362,8 @@ class LabelsChecker(BaseChecker):
                 details=(
                     "Splitting the designspace names each instance from the labels at its "
                     "location, and the variable font's instance name is taken from that "
-                    f'unless the style name is given with xml:lang="en". Here that is '
+                    "unless the instance has a localised style name, in any language. "
+                    "Here that is "
                     f"{stat!r}, not {instance.styleName!r}. "
                     + (
                         "Every label at this location is elidable and the document has no "

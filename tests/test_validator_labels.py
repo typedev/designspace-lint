@@ -177,3 +177,18 @@ def test_no_link_between_regular_and_bold_is_noted_when_instances_rely_on_it():
     unlinked = _weight(_label("Regular", 400, elidable=True), BOLD)
     assert STYLE_LINK in _codes(unlinked, _instance("Bold", 700))
     assert STYLE_LINK not in _codes(_weight(REGULAR, BOLD), _instance("Bold", 700))
+
+
+def test_any_localised_style_name_keeps_the_name():
+    """The split keeps an instance's localised names when it has any at all.
+
+    fvar then adds "en" from the stylename. So a German name alone is enough
+    to keep "Heavy" -- reported by the DSSketch agent, confirmed in split.py
+    and varLib._add_fvar.
+    """
+    instance = (
+        '<instance familyname="Fam" stylename="Heavy">'
+        '<stylename xml:lang="de">Schwer</stylename><location>'
+        '<dimension name="Weight" uservalue="700"/></location></instance>'
+    )
+    assert INSTANCE_NAME_REPLACED not in _codes(_weight(REGULAR, BOLD), instance)

@@ -130,8 +130,8 @@ assumed, and several of them contradict what seems reasonable:
   different axes included.
 - **Instance names come from the labels.** When the document has labels, the
   build names each instance from the labels at its location, and a
-  `stylename` without `xml:lang="en"` is replaced by that in the variable
-  font. Where every label is elidable and there is no `elidedfallbackname`,
+  `stylename` with no localised `<stylename xml:lang="...">` beside it is
+  replaced by that in the variable font. Where every label is elidable and there is no `elidedfallbackname`,
   the name is empty.
 - Duplicate masters are duplicates after the omitted axes are filled in:
   `{Weight: 900}` and `{Weight: 900, Width: 100}` (the default) are one

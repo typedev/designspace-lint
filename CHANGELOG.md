@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **10.0 no longer flags an instance that has localised style names in any
+  language.** The split keeps an instance's own localised names whenever there
+  are any, and fvar then adds English from `stylename` itself. Only an instance
+  with no localised names at all is renamed from the labels. 0.5.0 skipped
+  only instances with an explicit `xml:lang="en"` name, so a document with,
+  say, German names alone got a finding for every instance. Reported by the
+  DSSketch agent and confirmed in `designspaceLib/split.py` and
+  `varLib._add_fvar`.
+
 ## [0.5.0] - 2026-09-28
 
 Prompted by an independent coverage audit (`docs/audit/2026-09-coverage/`).
