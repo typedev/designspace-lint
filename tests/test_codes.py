@@ -175,12 +175,12 @@ def test_an_unknown_phase_is_an_error():
 # --- public helpers, and the names they had -----------------------------------
 
 
-def test_the_old_private_names_still_work_for_one_release():
+def test_the_names_deprecated_in_0_6_are_gone():
+    """Removed in 0.7, after a release of deprecation; the public names stay."""
     from designspace_lint import glyph_order
-    from designspace_lint.checkers.base import BaseChecker
+    from designspace_lint.checkers.glyphs import GlyphsChecker
 
-    assert glyph_order._first_wins is glyph_order.dedupe_glyph_order
-    assert glyph_order._raw_glyph_order is glyph_order.raw_glyph_order
-    entry = _entry({"A": _square("A")}, {"A": _square("A")})
-    source = entry.sources[0]
-    assert designspace_lint.label_for_source(source) == BaseChecker._source_label(source)
+    assert not hasattr(glyph_order, "_first_wins")
+    assert not hasattr(glyph_order, "_raw_glyph_order")
+    assert not hasattr(GlyphsChecker, "check_glyphs")
+    assert glyph_order.dedupe_glyph_order(["a", "b", "a"]) == ["a", "b"]

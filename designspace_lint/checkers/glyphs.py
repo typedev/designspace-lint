@@ -23,7 +23,6 @@ Licensed under the Apache License, Version 2.0
 from __future__ import annotations
 
 import logging
-import warnings
 from collections import defaultdict
 from typing import TYPE_CHECKING, Iterator
 
@@ -173,26 +172,6 @@ class GlyphsChecker(BaseChecker):
     def check(self) -> Iterator[CheckResult]:
         """Run all glyph compatibility checks."""
         yield from self._check_slices(glyph_names=self.only_glyphs)
-
-    def check_glyphs(self, glyph_names: set[str]) -> Iterator[CheckResult]:
-        """
-        Check only specified glyphs.
-
-        This is used for partial recheck after fixing specific glyphs.
-
-        Args:
-            glyph_names: Set of glyph names to check
-
-        Yields:
-            CheckResult for each problem found
-        """
-        warnings.warn(
-            "GlyphsChecker.check_glyphs() is deprecated and goes in 0.7; use "
-            'lint(designspace, phases=["glyphs"], glyphs=[...])',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        yield from self._check_slices(glyph_names=set(glyph_names))
 
     def _slices(self) -> list[tuple[dict, object, list, list]]:
         """The designspace split into interpolable parts, with their sources.

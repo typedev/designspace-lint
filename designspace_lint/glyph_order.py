@@ -163,8 +163,3 @@ __all__ = [
     "owns_glyph",
     "extras_for_subdoc",
 ]
-
-
-# The names these had before 0.6. Font-Rover imported them; they go in 0.7.
-_raw_glyph_order = raw_glyph_order
-_first_wins = dedupe_glyph_order
