@@ -5,6 +5,69 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-28
+
+(There is no 0.3: the repository carries v0.3.x tags from the application
+these checks were extracted from, so this release takes the next free number.)
+
+The items 0.2.0 left for later. Each rule was checked against fontTools 4.65
+and ufo2ft 3.9 source first.
+
+### Added
+
+- **Point by point, on request: `--interpolatable`** (`lint(...,
+  interpolatable=True)`). This runs fontTools' `varLib.interpolatable` over the
+  masters that are already open. It catches what a structural comparison
+  cannot: masters that agree on every count but interpolate badly.
+  - **4.14**: contours in a different order.
+  - **4.15**: a contour that starts at a different point, or runs the other way.
+  - **4.16**: a contour that thins out halfway.
+  - **4.17**: a contour that kinks halfway (information).
+  - **4.18**: a count of the glyphs that were left unchecked. `interpolatable`
+    needs scipy or munkres to match more than six contours, and the new
+    `interpolatable` extra installs munkres.
+
+  A problem shared by several master pairs is one finding, which names the
+  pair `interpolatable` is surest about and lists the rest.
+  - **Amstelvar reference Roman:** 8 × 4.14, 16 × 4.15, 25 × 4.16 and
+    1 × 4.17, where 0.2 reported nothing. The run went from 13 s to 27 s.
+  - **GoogleSansFlex** (657 masters, 0.2: no findings): reversed and rotated
+    start points in 4 glyphs, `backslash` among them, contour order in 1 glyph
+    and thinning in 3. Kinks showed up in 58 glyphs. The run took 5 min 20 s.
+
+  A component whose base is missing from a master is drawn as nothing, which
+  is what ufo2ft's placeholder for it amounts to.
+- **1.19–1.22**: the variable fonts a DS5 document declares.
+  - **1.19**: an unknown axis. Splitting the document raises on it.
+  - **1.20**: a range over a discrete axis. Splitting raises on this too.
+  - **1.21**: a subset that selects nothing. The font is silently never built.
+  - **1.22**: `userdefault="0"`. fontTools reads it with
+    `userDefault or axis.default`, so it falls through to the axis default.
+
+### Fixed
+
+- **2.3 and 3.2 could never fire.** fontTools drops a location dimension that
+  names an undeclared axis while it reads the file. What is left is a log
+  warning and a source quietly moved to that axis' default, usually after an
+  axis was renamed. Both checks now read the file itself, and 3.2 covers
+  location labels too.
+- **An empty glyph is judged the way varLib builds it (4.12).** When the
+  default draws a glyph, varLib reads an empty copy in another master as
+  missing and interpolates the outline across that master. The copy's advance
+  width still interpolates, because HVAR only skips 0xFFFF. So:
+  - Such a master is no longer compared in the outline checks. It used to
+    produce 4.0/4.2/4.9 incompatibilities the build never sees; on the
+    Amstelvar reference Roman, 4.9 went from 136 to 106 and 4.0 from 82 to 53.
+  - It now leaves an axis-end gap (4.11) like a missing glyph.
+  - 4.12 says that the outline skips the master while the advance width does
+    not. It used to say "the shape collapses", which was wrong.
+- **The whole-document checks run once in every designspace**, not only in
+  those with discrete axes. 3.12 is reported once.
+- **A bad `<variable-fonts>` entry no longer blanks the discrete slices.**
+  fontTools resolves the declared variable fonts while it splits the
+  document, and raises on 1.19 or 1.20. The slices are now cut from a copy
+  that declares none, so everything else is still checked.
+
 ## [0.2.0] - 2026-09-27
 
 Prompted by an independent coverage audit (`docs/audit/2026-09-coverage/`).

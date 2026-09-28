@@ -58,7 +58,7 @@ from .model import (
 )
 from .protocols import DesignSpaceLike, SourceLike
 
-__version__ = "0.2.0"
+__version__ = "0.4.0"
 
 #: A problem found in a designspace. The name the checks use internally is
 #: `CheckResult`; this is the same class, named for the reader.

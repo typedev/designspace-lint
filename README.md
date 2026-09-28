@@ -34,7 +34,20 @@ result means every check ran.
 ```console
 pip install designspace-lint            # the checks and the CLI
 pip install "designspace-lint[features]"  # + the features.fea comparison (ufo2ft)
+pip install "designspace-lint[interpolatable]"  # + a solver for --interpolatable
 ```
+
+### Point by point: `--interpolatable`
+
+The glyph checks compare structure. Two masters can agree on every count and
+still interpolate badly: a contour that starts at another point or runs the
+other way twists between them, contours in another order swap shapes, a curve
+thins out or kinks halfway. varLib builds all of it without a word.
+`--interpolatable` (or `lint(..., interpolatable=True)`) runs fontTools'
+`varLib.interpolatable` over the masters already open and reports these as
+4.14–4.17. It roughly doubles the run time, so it is off by default. Glyphs of
+more than six contours need an assignment solver; without the extra they are
+counted and reported once (4.18) instead of checked.
 
 ## Use it from Python
 
@@ -62,10 +75,10 @@ problems = lint(my_designspace)     # nothing is re-opened
 | Category | What it looks at |
 |---|---|
 | 0 File | the document can be read at all, and every check could finish |
-| 1 Geometry | axis minimum/default/maximum, mappings, duplicate names and tags, discrete axis values, **avar2 mappings from the default** |
-| 2 Sources | locations, missing UFOs, duplicate locations as varLib compares them, the default, sources off a discrete axis' values |
+| 1 Geometry | axis minimum/default/maximum, mappings, duplicate names and tags, discrete axis values, **avar2 mappings from the default**, the declared `<variable-fonts>` |
+| 2 Sources | locations (as written in the file, before fontTools drops unknown axes), missing UFOs, duplicate locations as varLib compares them, the default, sources off a discrete axis' values |
 | 3 Instances | instance locations and names, unknown location labels, one name at two locations |
-| 4 Glyphs | master compatibility: contours, points, curve types, components, anchors, unicodes, contour direction, empty glyphs, and **how far along each axis a glyph actually reaches** |
+| 4 Glyphs | master compatibility: contours, points, curve types, components, anchors, unicodes, contour direction, empty glyphs, **how far along each axis a glyph actually reaches**, and with `--interpolatable` start points, contour order and shapes that thin out or kink |
 | 5 Kerning | kerning groups, masters with no kerning, a glyph in two groups of one side |
 | 6 Font Info | units per em, required fields, values that differ |
 | 7 Rules | rule conditions, rules that never apply, rule glyphs missing from the default master, **overlapping rules** |
@@ -112,6 +125,11 @@ assumed, and several of them contradict what seems reasonable:
 - Duplicate masters are duplicates after the omitted axes are filled in:
   `{Weight: 900}` and `{Weight: 900, Width: 100}` (the default) are one
   location to varLib, which refuses them.
+- **An empty glyph is a missing glyph to the outline, not to the spacing.**
+  When the default draws a glyph, varLib reads an empty copy in another master
+  as absent and interpolates the shape across it, while the advance width of
+  that empty copy still interpolates. So it is not an incompatibility, and at
+  the end of an axis it reverts like a missing glyph (4.11).
 - Sparse masters need no naming convention. Which masters a glyph may skip
   follows from the axes; which sources carry kerning, features and a glyph
   order of their own follows from whether they are layers.
