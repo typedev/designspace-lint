@@ -16,6 +16,7 @@ from .glyphorder import GlyphOrderChecker
 from .glyphs import GlyphsChecker
 from .instances import InstancesChecker
 from .kerning import KerningChecker
+from .labels import LabelsChecker
 from .rules import RulesChecker
 from .sources import SourcesChecker
 
@@ -31,4 +32,5 @@ __all__ = [
     "RulesChecker",
     "FeaturesChecker",
     "GlyphOrderChecker",
+    "LabelsChecker",
 ]

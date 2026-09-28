@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 from typing import Iterator
 
-from ..model import CATEGORY_INSTANCES, SEVERITY_STRUCTURAL, CheckResult
+from ..model import CATEGORY_INSTANCES, SEVERITY_DESIGN, SEVERITY_STRUCTURAL, CheckResult
 from .base import BaseChecker, format_value as _num
 from ..raw_xml import undeclared_axis_dimensions
 from .sources import discrete_value_problems
@@ -275,6 +275,7 @@ class InstancesChecker(BaseChecker):
                     location=name,
                     details="; ".join(_pretty_location(dict(key)) for key in sorted(locations)),
                     is_structural=False,
+                    severity=SEVERITY_DESIGN,
                     raw_data={"familyName": family, "styleName": style},
                 )
 
@@ -350,5 +351,6 @@ class InstancesChecker(BaseChecker):
                     "values, so this instance belongs to no slice and is never generated."
                 ),
                 is_structural=False,
+                severity=SEVERITY_DESIGN,
                 raw_data={"axisName": axis.name, "value": value},
             )

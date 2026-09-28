@@ -23,8 +23,16 @@ from designspace_lint.checkers.axes import (
     VF_ZERO_DEFAULT_IGNORED,
     AxesChecker,
 )
+from designspace_lint.checkers.avar2 import (
+    AVAR2_CHAINED,
+    AVAR2_DUPLICATE_INPUT,
+    AVAR2_PAST_THE_MASTERS,
+    AVAR2_UNDRIVEN_HIDDEN_AXIS,
+    AVAR2_UNKNOWN_AXIS,
+    AVAR2_VALUE_CLAMPED,
+)
 from designspace_lint.model import SEVERITY_STRUCTURAL
-from dsxml import ITALIC, WEIGHT, ds
+from dsxml import ITALIC, WEIGHT, ds, source
 
 
 def _results(doc):
@@ -181,3 +189,86 @@ def test_a_zero_userdefault_is_read_as_not_set():
     axis = '<axis tag="slnt" name="Slant" minimum="-12" default="-6" maximum="0"/>'
     codes = _vf_codes(_vf("A", _range("Slant", -12, 0, 0)), axes=axis)
     assert codes == [VF_ZERO_DEFAULT_IGNORED]
+
+
+# --- avar2 mappings, 1.23-1.28 ------------------------------------------------
+
+HIDDEN = '<axis tag="XHID" name="Hid" minimum="0" default="0" maximum="100" hidden="1"/>'
+
+
+WIDE_AND_HIDDEN = source("Default.ufo") + source("Wide.ufo", Width=200) + source("Hid.ufo", Hid=100)
+
+
+def _avar2_doc(*mappings, sources=None, axes=WEIGHT + WIDTH + HIDDEN):
+    if sources is None:
+        sources = source("Default.ufo") + source("Hid.ufo", Hid=100)
+    return ds(axes, sources, mappings="<mappings>" + "".join(mappings) + "</mappings>")
+
+
+def _avar2_codes(*mappings, **kwargs):
+    return [r.code for r in _results(_avar2_doc(*mappings, **kwargs)) if 23 <= r.code <= 28]
+
+
+def test_a_clean_avar2_document_has_nothing_to_report():
+    assert _avar2_codes(_mapping({"Weight": 900}, {"Hid": 100})) == []
+
+
+def test_two_mappings_with_one_input_stop_the_build():
+    """VariationModel: "Locations must be unique." -- after zeros drop out."""
+    for first, second in (
+        ({"Weight": 900}, {"Weight": 900}),
+        ({"Weight": 900}, {"Weight": 900, "Hid": 0}),
+        ({"Weight": 900}, {"Weight": 1200}),  # clamped to the end first
+        ({"Weight": 400}, {"Width": 100}),  # both are the default location
+    ):
+        codes = _avar2_codes(_mapping(first, {"Hid": 10}), _mapping(second, {"Hid": 20}))
+        assert codes.count(AVAR2_DUPLICATE_INPUT) == 1, (first, second)
+
+
+def test_a_mapping_naming_an_axis_the_font_does_not_have_is_dropped():
+    results = [
+        r
+        for r in _results(
+            _avar2_doc(
+                _mapping({"wght": 900}, {"Hid": 50}),  # a tag, not a name
+                _mapping({"Weight": 900}, {"Nope": 5}),
+            )
+        )
+        if r.code == AVAR2_UNKNOWN_AXIS
+    ]
+    assert [r.raw_data["axisName"] for r in results] == ["wght", "Nope"]
+    assert "did you mean Weight" in results[0].details
+
+
+def test_a_value_past_the_axis_end_is_clamped_once_per_mapping():
+    results = [
+        r
+        for r in _results(_avar2_doc(_mapping({"Weight": 900}, {"Hid": 500, "Width": 20})))
+        if r.code == AVAR2_VALUE_CLAMPED
+    ]
+    assert len(results) == 1
+    assert len(results[0].raw_data["clamped"]) == 2
+
+
+def test_an_output_past_the_outermost_master_is_reported():
+    """Masters reach Hid 50 only: an output of 100 tapers back toward the default."""
+    codes = _avar2_codes(
+        _mapping({"Weight": 900}, {"Hid": 100}),
+        sources=source("Default.ufo") + source("Hid.ufo", Hid=50),
+    )
+    assert codes == [AVAR2_PAST_THE_MASTERS]
+
+
+def test_a_chain_of_mappings_is_reported():
+    """Deltas are evaluated before avar2 applies, so Width never feeds the second."""
+    codes = _avar2_codes(
+        _mapping({"Weight": 900}, {"Width": 150}),
+        _mapping({"Width": 150}, {"Hid": 50}),
+        sources=WIDE_AND_HIDDEN,
+    )
+    assert codes == [AVAR2_CHAINED]
+
+
+def test_a_hidden_axis_no_mapping_touches_is_noted():
+    codes = _avar2_codes(_mapping({"Weight": 900}, {"Width": 150}), sources=WIDE_AND_HIDDEN)
+    assert codes == [AVAR2_UNDRIVEN_HIDDEN_AXIS]

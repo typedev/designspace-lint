@@ -51,6 +51,7 @@ PHASES = [
     ("geometry", "Checking geometry..."),
     ("sources", "Checking sources..."),
     ("instances", "Checking instances..."),
+    ("labels", "Checking labels..."),
     ("glyphs", "Checking glyphs..."),
     ("kerning", "Checking kerning..."),
     ("fontinfo", "Checking font info..."),
@@ -72,7 +73,7 @@ PHASE_FAILED = 1
 # Phases that look at the whole document. With discrete axes they run once,
 # on the document itself: a slice has lost its discrete axes by construction,
 # so asking a slice whether it has axes answers a different question.
-DOCUMENT_PHASES = ("file", "geometry")
+DOCUMENT_PHASES = ("file", "geometry", "labels")
 
 
 def phase_failed(phase_id: str, exc: Exception, where: str = "") -> CheckResult:
@@ -210,6 +211,13 @@ class Linter:
             from .checkers.features import FeaturesChecker
 
             self._checkers["features"] = FeaturesChecker
+        except ImportError:
+            pass
+
+        try:
+            from .checkers.labels import LabelsChecker
+
+            self._checkers["labels"] = LabelsChecker
         except ImportError:
             pass
 

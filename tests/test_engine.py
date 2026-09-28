@@ -181,3 +181,36 @@ def test_a_bad_variable_font_declaration_does_not_stop_the_slices():
     assert (CATEGORY_GEOMETRY, VF_RANGE_ON_DISCRETE_AXIS) in pairs
     assert (CATEGORY_FILE, PHASE_FAILED) not in pairs
     assert pairs.count((CATEGORY_SOURCES, SOURCE_FILE_NOT_FOUND)) == 2
+
+
+def test_labels_are_checked_once_on_the_whole_document():
+    """The names come from full locations, so the phase is not repeated per slice."""
+    from fontTools.designspaceLib import AxisLabelDescriptor
+
+    from designspace_lint.checkers.labels import INSTANCE_NAME_REPLACED
+    from designspace_lint.model import CATEGORY_LABELS
+
+    entry = build_designspace(
+        axes=[WEIGHT, ITALIC],
+        sources=[
+            {"name": "Roman", "location": {"Weight": 400, "Italic": 0}, "glyphs": ["A"]},
+            {"name": "Italic", "location": {"Weight": 400, "Italic": 1}, "glyphs": ["A"]},
+        ],
+    )
+    entry.doc.axes[0].axisLabels = [
+        AxisLabelDescriptor(name="Regular", userValue=400, elidable=True),
+        AxisLabelDescriptor(name="Bold", userValue=700),
+    ]
+    entry.doc.axes[1].axisLabels = [
+        AxisLabelDescriptor(name="Upright", userValue=0, elidable=True),
+        AxisLabelDescriptor(name="Italic", userValue=1),
+    ]
+    entry.doc.elidedFallbackName = "Regular"
+    instance = InstanceDescriptor()
+    instance.familyName, instance.styleName = "F", "Heavy"
+    instance.userLocation = {"Weight": 700, "Italic": 0}
+    entry.doc.addInstance(instance)
+
+    pairs = _pairs(lint(entry))
+
+    assert pairs.count((CATEGORY_LABELS, INSTANCE_NAME_REPLACED)) == 1

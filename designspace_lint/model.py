@@ -31,6 +31,7 @@ CATEGORY_FONTINFO = 6
 CATEGORY_RULES = 7
 CATEGORY_FEATURES = 8
 CATEGORY_GLYPHORDER = 9  # Our custom checks
+CATEGORY_LABELS = 10  # DesignSpace 5 labels and STAT; ours
 
 CATEGORY_NAMES = {
     CATEGORY_FILE: "File",
@@ -43,6 +44,7 @@ CATEGORY_NAMES = {
     CATEGORY_RULES: "Rules",
     CATEGORY_FEATURES: "Features",
     CATEGORY_GLYPHORDER: "GlyphOrder",
+    CATEGORY_LABELS: "Labels",
 }
 
 # Severity levels

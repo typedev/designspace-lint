@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from typing import Iterator
 
-from ..model import CATEGORY_RULES, SEVERITY_STRUCTURAL, CheckResult
+from ..model import CATEGORY_RULES, SEVERITY_DESIGN, SEVERITY_STRUCTURAL, CheckResult
 from .base import BaseChecker
 
 logger = logging.getLogger(__name__)
@@ -297,6 +297,7 @@ class RulesChecker(BaseChecker):
                         + (f" Also affected: {', '.join(shared[1:])}." if len(shared) > 1 else "")
                     ),
                     is_structural=False,
+                    severity=SEVERITY_DESIGN,
                     raw_data={
                         "rules": [name_a, name_b],
                         "glyphs": shared,

@@ -28,6 +28,7 @@ Checks:
 - 1.20: Variable font selects a range over a discrete axis
 - 1.21: Variable font subset selects nothing on its axis
 - 1.22: Variable font default of 0 that fontTools reads as "not set"
+- 1.23-1.28: avar2 mappings, see `avar2.py`
 
 Copyright 2024-2026 TypeDev
 Licensed under the Apache License, Version 2.0
@@ -39,6 +40,7 @@ import logging
 from typing import Iterator
 
 from ..model import CATEGORY_GEOMETRY, SEVERITY_INFO, SEVERITY_STRUCTURAL, CheckResult
+from .avar2 import Avar2Checks
 from .base import BaseChecker, format_value as _num
 
 logger = logging.getLogger(__name__)
@@ -77,7 +79,7 @@ def _is_discrete(axis) -> bool:
     return bool(getattr(axis, "values", None))
 
 
-class AxesChecker(BaseChecker):
+class AxesChecker(Avar2Checks, BaseChecker):
     """
     Validates axis definitions and mappings.
 
@@ -192,6 +194,7 @@ class AxesChecker(BaseChecker):
 
         # Check 1.18: avar2 mappings
         yield from self._check_axis_mappings(doc)
+        yield from self._check_avar2(doc)
 
         # Checks 1.19-1.22: <variable-fonts>
         yield from self._check_variable_fonts(doc)
