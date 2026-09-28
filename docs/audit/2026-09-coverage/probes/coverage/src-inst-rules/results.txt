@@ -1,0 +1,152 @@
+=== p_inst01_no_stylename.designspace ===
+Cannot look up family name, assign the 'familyname' attribute to the default source.
+Cannot look up family name, assign the 'familyname' attribute to the default source.
+Cannot look up family name, assign the 'familyname' attribute to the default source.
+Cannot look up family name, assign the 'familyname' attribute to the default source.
+--- json ---
+count= 2
+[{"severity": "info", "category": "Instances", "code": "3.7", "description": "missing style name", "location": "instance 0", "glyph": null, "details": "instance at Weight:700"}, {"severity": "info", "category": "Instances", "code": "3.7", "description": "missing style name", "location": "instance 1", "glyph": null, "details": "instance at Weight:600"}]
+exit=1
+
+=== p_inst02_both_location_forms.designspace ===
+designspace-lint: cannot read p_inst02_both_location_forms.designspace: instance element must have at most one of the location="..." attribute or the nested location element
+--- json ---
+PARSE_ERR Expecting value: line 1 column 1 (char 0)
+
+exit=2
+
+=== p_inst03_range.designspace ===
+--- json ---
+count= 2
+[{"severity": "info", "category": "Instances", "code": "3.3", "description": "instance location has out of bounds value", "location": "Probe OutOfRange", "glyph": null, "details": "Probe-OutOfRange Weight: 5000.0 is outside of extremes"}, {"severity": "info", "category": "Instances", "code": "3.5", "description": "instance location requires extrapolation", "location": "Probe OutOfRange", "glyph": null, "details": "Probe-OutOfRange Weight: 5000.0 is outside of extremes"}]
+exit=1
+
+=== p_inst08_dupname_diffloc.designspace ===
+Cannot look up family name, assign the 'familyname' attribute to the default source.
+Cannot look up family name, assign the 'familyname' attribute to the default source.
+Cannot look up family name, assign the 'familyname' attribute to the default source.
+Cannot look up family name, assign the 'familyname' attribute to the default source.
+--- json ---
+count= 0
+[]
+exit=0
+
+=== p_rule02_minmax.designspace ===
+--- json ---
+count= 2
+[{"severity": "info", "category": "Instances", "code": "3.10", "description": "no instances defined", "location": "designspace", "glyph": null, "details": ""}, {"severity": "info", "category": "Rules", "code": "7.2", "description": "Rule condition has invalid range: Weight min=800.0 > max=200.0", "location": "invertedbox", "glyph": null, "details": ""}]
+exit=1
+
+=== p_rule03_degenerate.designspace ===
+--- json ---
+count= 1
+[{"severity": "info", "category": "Instances", "code": "3.10", "description": "no instances defined", "location": "designspace", "glyph": null, "details": ""}]
+exit=1
+
+=== p_rule04_badaxis.designspace ===
+--- json ---
+count= 2
+[{"severity": "info", "category": "Instances", "code": "3.10", "description": "no instances defined", "location": "designspace", "glyph": null, "details": ""}, {"severity": "info", "category": "Rules", "code": "7.1", "description": "Rule condition references undefined axis: Grade", "location": "badaxis", "glyph": null, "details": ""}]
+exit=1
+
+=== p_rule0506_overlap.designspace ===
+--- json ---
+count= 1
+[{"severity": "info", "category": "Instances", "code": "3.10", "description": "no instances defined", "location": "designspace", "glyph": null, "details": ""}]
+exit=1
+
+=== p_rule07_oob.designspace ===
+--- json ---
+count= 2
+[{"severity": "info", "category": "Instances", "code": "3.10", "description": "no instances defined", "location": "designspace", "glyph": null, "details": ""}, {"severity": "info", "category": "Rules", "code": "7.3", "description": "Rule condition maximum above axis maximum: Weight 3000.0 > 900.0", "location": "deadrule", "glyph": null, "details": ""}]
+exit=1
+
+=== p_rule0809_missing_glyph.designspace ===
+--- json ---
+count= 3
+[{"severity": "info", "category": "Instances", "code": "3.10", "description": "no instances defined", "location": "designspace", "glyph": null, "details": ""}, {"severity": "info", "category": "Rules", "code": "7.5", "description": "Rule substitution references undefined glyph: A.zzzmissing", "location": "missingtarget", "glyph": "A.zzzmissing", "details": ""}, {"severity": "info", "category": "Rules", "code": "7.5", "description": "Rule substitution references undefined glyph: zzz.missingsource", "location": "missingsource", "glyph": "zzz.missingsource", "details": ""}]
+exit=1
+
+=== p_rule12_empty_conditionset.designspace ===
+--- json ---
+count= 3
+[{"severity": "info", "category": "Instances", "code": "3.10", "description": "no instances defined", "location": "designspace", "glyph": null, "details": ""}, {"severity": "info", "category": "Rules", "code": "7.0", "description": "Rule has no conditions", "location": "emptycs", "glyph": null, "details": ""}, {"severity": "info", "category": "Rules", "code": "7.3", "description": "Rule condition maximum above axis maximum: Weight 3000.0 > 900.0", "location": "afterward_oob", "glyph": null, "details": ""}]
+exit=1
+
+=== p_rule13_zero_conditionsets.designspace ===
+Phase rules failed: 'list' object has no attribute 'get'
+--- json ---
+count= 2
+[{"severity": "info", "category": "Instances", "code": "3.10", "description": "no instances defined", "location": "designspace", "glyph": null, "details": ""}, {"severity": "info", "category": "Rules", "code": "7.0", "description": "Rule has no conditions", "location": "nocondatall", "glyph": null, "details": ""}]
+exit=1
+
+=== p_rule17_sparse_glyph.designspace ===
+--- json ---
+count= 3
+[{"severity": "info", "category": "Instances", "code": "3.10", "description": "no instances defined", "location": "designspace", "glyph": null, "details": ""}, {"severity": "error", "category": "Glyphs", "code": "4.7", "description": "missing in default, exists in 1 sources", "location": "exists in Sparse", "glyph": "b.rvrn", "details": "Glyph 'b.rvrn' exists in Sparse.ufo but not in the default source (Base.ufo); it will be dropped from the variable font"}, {"severity": "warn", "category": "GlyphOrder", "code": "9.0", "description": "Extra glyph 'b.rvrn' not in default glyphOrder", "location": "Sparse.ufo", "glyph": "b.rvrn", "details": "Found in 1 source(s)"}]
+exit=1
+
+=== p_rule22_badprocessing.designspace ===
+designspace-lint: cannot read p_rule22_badprocessing.designspace: <rules> processing attribute value is not valid: 'Last', expected 'first' or 'last'
+--- json ---
+PARSE_ERR Expecting value: line 1 column 1 (char 0)
+
+exit=2
+
+=== p_rule23_condition_nobound.designspace ===
+designspace-lint: cannot read p_rule23_condition_nobound.designspace: condition missing required minimum or maximum in rule 'r1'
+--- json ---
+PARSE_ERR Expecting value: line 1 column 1 (char 0)
+
+exit=2
+
+=== p_src01_no_default.designspace ===
+--- json ---
+count= 1
+[{"severity": "error", "category": "Sources", "code": "2.5", "description": "No default source defined or found", "location": "", "glyph": null, "details": ""}]
+exit=1
+
+=== p_src0203_dup_identical.designspace ===
+--- json ---
+count= 1
+[{"severity": "error", "category": "Sources", "code": "2.6", "description": "Duplicate source location with Dup1", "location": "Dup2", "glyph": null, "details": ""}]
+exit=1
+
+=== p_src02_dup_implicit_vs_explicit.designspace ===
+--- json ---
+count= 1
+[{"severity": "info", "category": "Instances", "code": "3.10", "description": "no instances defined", "location": "designspace", "glyph": null, "details": ""}]
+exit=1
+
+=== p_src04_range.designspace ===
+--- json ---
+count= 1
+[{"severity": "error", "category": "Sources", "code": "2.4", "description": "Source location Weight=1200.0 out of range [100.0, 900.0]", "location": "OutOfRange", "glyph": null, "details": ""}]
+exit=1
+
+=== p_src05_badaxis.designspace ===
+Location with undefined axis: "Grade".
+--- json ---
+count= 1
+[{"severity": "info", "category": "Instances", "code": "3.10", "description": "no instances defined", "location": "designspace", "glyph": null, "details": ""}]
+exit=1
+
+=== p_src06_uservalue.designspace ===
+designspace-lint: cannot read p_src06_uservalue.designspace: <source> element "Default" must only have design locations (using xvalue="").
+--- json ---
+PARSE_ERR Expecting value: line 1 column 1 (char 0)
+
+exit=2
+
+=== p_src10_layer_intentional.designspace ===
+--- json ---
+count= 4
+[{"severity": "info", "category": "Instances", "code": "3.10", "description": "no instances defined", "location": "designspace", "glyph": null, "details": ""}, {"severity": "warn", "category": "Glyphs", "code": "4.0", "description": "different contour count: 0 contours (1x), 1 contours (2x)", "location": "2 variants", "glyph": "B", "details": "Glyph 'B' has different contour counts across sources: 0 contours (1x), 1 contours (2x)"}, {"severity": "warn", "category": "Glyphs", "code": "4.9", "description": "incompatible: 2 different structures", "location": "2 variants", "glyph": "B", "details": "Glyph 'B' has 2 different structures: 2 sources: Layered.ufo, Other.ufo; 1 sources: Layered.ufo [wght500]"}, {"severity": "warn", "category": "Glyphs", "code": "4.12", "description": "empty here, drawn in 2 sources", "location": "Layered [wght500]", "glyph": "B", "details": "Glyph 'B' has no contours and no components in Layered.ufo [wght500], but is drawn in Layered.ufo, Other.ufo"}]
+exit=1
+
+=== p_src1112_empty_glyph.designspace ===
+--- json ---
+count= 4
+[{"severity": "info", "category": "Instances", "code": "3.10", "description": "no instances defined", "location": "designspace", "glyph": null, "details": ""}, {"severity": "warn", "category": "Glyphs", "code": "4.0", "description": "different contour count: 0 contours (1x), 1 contours (1x)", "location": "2 variants", "glyph": "B", "details": "Glyph 'B' has different contour counts across sources: 0 contours (1x), 1 contours (1x)"}, {"severity": "warn", "category": "Glyphs", "code": "4.9", "description": "incompatible: 2 different structures", "location": "2 variants", "glyph": "B", "details": "Glyph 'B' has 2 different structures: 1 sources: Base.ufo; 1 sources: EmptyB.ufo"}, {"severity": "warn", "category": "Glyphs", "code": "4.12", "description": "empty here, drawn in 1 sources", "location": "EmptyB", "glyph": "B", "details": "Glyph 'B' has no contours and no components in EmptyB.ufo, but is drawn in Base.ufo"}]
+exit=1
+

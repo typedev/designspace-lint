@@ -1,0 +1,11 @@
+[
+  {
+    "severity": "error",
+    "category": "Geometry",
+    "code": "1.9",
+    "description": "Axis mapping output values not in increasing order",
+    "location": "axis: Weight",
+    "glyph": null,
+    "details": ""
+  }
+]

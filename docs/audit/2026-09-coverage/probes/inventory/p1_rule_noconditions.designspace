@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<designspace format="5.0">
+<axes>
+  <axis tag="wght" name="Weight" minimum="100" default="400" maximum="900">
+    <map input="100" output="0"/><map input="400" output="100"/><map input="900" output="200"/>
+  </axis>
+</axes><sources>
+  <source filename="L.ufo" name="L"><location><dimension name="Weight" xvalue="0"/></location></source>
+  <source filename="R.ufo" name="R"><location><dimension name="Weight" xvalue="100"/></location></source>
+  <source filename="B.ufo" name="B"><location><dimension name="Weight" xvalue="200"/></location></source>
+</sources>
+<rules>
+  <rule name="nocond"><sub name="A" with="B"/></rule>
+  <rule name="oob"><conditionset><condition name="Weight" minimum="150" maximum="999"/></conditionset><sub name="A" with="B"/></rule>
+</rules>
+</designspace>

@@ -1,0 +1,11 @@
+[
+  {
+    "severity": "info",
+    "category": "Instances",
+    "code": "3.10",
+    "description": "no instances defined",
+    "location": "designspace",
+    "glyph": null,
+    "details": ""
+  }
+]

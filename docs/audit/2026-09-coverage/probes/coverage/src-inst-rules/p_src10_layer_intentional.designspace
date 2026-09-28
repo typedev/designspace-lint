@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<designspace format="5.0">
+<axes>
+  <axis tag="wght" name="Weight" minimum="100" default="400" maximum="900"/>
+</axes>
+<sources>
+  <source filename="Layered.ufo" name="Default"><location><dimension name="Weight" xvalue="400"/></location></source>
+  <source filename="Layered.ufo" name="Intermediate" layer="wght500"><location><dimension name="Weight" xvalue="500"/></location></source>
+  <source filename="Other.ufo" name="Top"><location><dimension name="Weight" xvalue="900"/></location></source>
+</sources>
+</designspace>

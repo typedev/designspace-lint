@@ -1,0 +1,29 @@
+[
+  {
+    "severity": "info",
+    "category": "Instances",
+    "code": "3.10",
+    "description": "no instances defined",
+    "location": "designspace [Italic:0]",
+    "glyph": null,
+    "details": ""
+  },
+  {
+    "severity": "info",
+    "category": "Instances",
+    "code": "3.10",
+    "description": "no instances defined",
+    "location": "designspace [Italic:1]",
+    "glyph": null,
+    "details": ""
+  },
+  {
+    "severity": "error",
+    "category": "Font Info",
+    "code": "6.0",
+    "description": "unitsPerEm differs: 1000 (default: 2048)",
+    "location": "H.ufo [Italic:1]",
+    "glyph": null,
+    "details": ""
+  }
+]

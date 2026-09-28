@@ -1,0 +1,11 @@
+[
+  {
+    "severity": "error",
+    "category": "Geometry",
+    "code": "1.2",
+    "description": "Axis default 500.0 not within range [0.0, 100.0]",
+    "location": "axis: XHID",
+    "glyph": null,
+    "details": ""
+  }
+]

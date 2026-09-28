@@ -1,0 +1,73 @@
+=== probes/p10_map_default_between.designspace
+2 problem(s), 1 structural
+info 3.10 designspace: no instances defined
+error 6.0 B.ufo: unitsPerEm differs: 2048 (default: 1000)
+exit=1
+=== probes/p11_axis_map.designspace
+3 problem(s), 2 structural
+error 1.9 axis: Weight: Axis mapping output values not in increasing order
+error 1.4 axis: Weight: Axis mapping input 1000.0 not within axis range [100.0, 900.0]
+info 1.7 axis: Weight: Axis mapping maximum input 1000.0 != axis maximum 900.0
+exit=1
+=== probes/p1_rule_noconditions.designspace
+LOG WARNING designspace_lint.engine: Phase rules failed: 'list' object has no attribute 'get'
+3 problem(s), 1 structural
+info 3.10 designspace: no instances defined
+error 6.0 B.ufo: unitsPerEm differs: 2048 (default: 1000)
+info 7.0 nocond: Rule has no conditions
+exit=1
+=== probes/p2_instance_nofamily_dup.designspace
+LOG WARNING designspace_lint.engine: Phase instances failed: unsupported operand type(s) for +: 'NoneType' and 'str'
+LOG WARNING fontTools.designspaceLib.statNames: Cannot look up family name, assign the 'familyname' attribute to the default source.
+LOG WARNING fontTools.designspaceLib.statNames: Cannot look up family name, assign the 'familyname' attribute to the default source.
+LOG WARNING fontTools.designspaceLib.statNames: Cannot look up family name, assign the 'familyname' attribute to the default source.
+LOG WARNING fontTools.designspaceLib.statNames: Cannot look up family name, assign the 'familyname' attribute to the default source.
+3 problem(s), 1 structural
+info 3.6 instance 0: missing family name
+    instance at Weight:50
+info 3.6 instance 1: missing family name
+    instance at Weight:50
+error 6.0 B.ufo: unitsPerEm differs: 2048 (default: 1000)
+exit=1
+=== probes/p3_avar2_hidden.designspace
+2 problem(s), 1 structural
+info 3.10 designspace: no instances defined
+error 6.0 B.ufo: unitsPerEm differs: 2048 (default: 1000)
+exit=1
+=== probes/p4_discrete_leak.designspace
+LOG WARNING designspace_lint.loader: Source UFO not found: probes/inventory/MISSING.ufo
+LOG WARNING designspace_lint.loader: Source UFO not found: probes/inventory/ALSO_MISSING.ufo
+1 problem(s), 1 structural
+error 2.1 U0 [Italic:0]: Source file not found: probes/inventory/MISSING.ufo
+exit=1
+=== probes/p5_ds5_userloc.designspace
+designspace-lint: cannot read probes/p5_ds5_userloc.designspace: axis-subset element must have min/max/default values or none at all.
+exit=2
+=== probes/p6_dup_implicit.designspace
+2 problem(s), 1 structural
+info 3.10 designspace: no instances defined
+error 6.0 B.ufo: unitsPerEm differs: 2048 (default: 1000)
+exit=1
+=== probes/p9_fontinfo_default.designspace
+3 problem(s), 2 structural
+info 3.10 designspace: no instances defined
+error 6.0 L.ufo: unitsPerEm differs: 1000 (default: 2048)
+error 6.0 R.ufo: unitsPerEm differs: 1000 (default: 2048)
+exit=1
+=== probes/p5_ds5_userloc.designspace
+Cannot look up family name, assign the 'familyname' attribute to the default source.
+Cannot look up family name, assign the 'familyname' attribute to the default source.
+4 problem(s), 1 structural
+info 3.3 P Huge: instance location has out of bounds value
+    P-Huge Weight: 500.0 is outside of extremes
+info 3.5 P Huge: instance location requires extrapolation
+    P-Huge Weight: 500.0 is outside of extremes
+info 3.8 P NoFile: missing output path
+    no location for P NoFile
+error 6.0 B.ufo: unitsPerEm differs: 2048 (default: 1000)
+exit=1
+=== probes/p12_rule_undefined_and_missing_ufo.designspace
+Source UFO not found: probes/inventory/NOPE.ufo
+1 problem(s), 1 structural
+error 2.1 N: Source file not found: probes/inventory/NOPE.ufo
+exit=1

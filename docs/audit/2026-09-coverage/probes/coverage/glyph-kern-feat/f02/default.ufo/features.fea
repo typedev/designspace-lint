@@ -1,0 +1,3 @@
+feature calt {
+    sub dollar by dollar.alt;
+} calt;

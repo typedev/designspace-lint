@@ -1,0 +1,75 @@
+ERROR: ("Install Python module 'munkres' or 'scipy >= 0.17.0'", 'googlesans-flex/sources/GoogleSansFlex/GoogleSansFlex.designspace')
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "./venv/lib/python3.12/site-packages/fontTools/varLib/interpolatable.py", line 1213, in <module>
+    problems = main()
+               ^^^^^^
+  File "./venv/lib/python3.12/site-packages/fontTools/varLib/interpolatable.py", line 995, in main
+    for glyphname, p in problems_gen:
+                        ^^^^^^^^^^^^
+  File "./venv/lib/python3.12/site-packages/fontTools/varLib/interpolatable.py", line 280, in test_gen
+    this_tolerance, matching = test_contour_order(glyph0, glyph1)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "./venv/lib/python3.12/site-packages/fontTools/varLib/interpolatableTestContourOrder.py", line 28, in test_contour_order
+    ) = matching_for_vectors(m0Control, m1Control)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "./venv/lib/python3.12/site-packages/fontTools/varLib/interpolatableHelpers.py", line 217, in matching_for_vectors
+    ) = min_cost_perfect_bipartite_matching(costs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "./venv/lib/python3.12/site-packages/fontTools/varLib/interpolatableHelpers.py", line 162, in min_cost_perfect_bipartite_matching_bruteforce
+    raise Exception("Install Python module 'munkres' or 'scipy >= 0.17.0'")
+Exception: ("Install Python module 'munkres' or 'scipy >= 0.17.0'", 'googlesans-flex/sources/GoogleSansFlex/GoogleSansFlex.designspace')
+Glyph backslash was not compatible:
+  Masters: GoogleSansFlex-wg1-wd151-oz144-GD0-RD0-sl0, GoogleSansFlex-wg1-wd151-oz144-GD0-RD100-sl0:
+    Contour 0 start point differs: 0 in GoogleSansFlex-wg1-wd151-oz144-GD0-RD0-sl0, 1 in GoogleSansFlex-wg1-wd151-oz144-GD0-RD100-sl0; reversed: True
+  Masters: GoogleSansFlex-wg1-wd25-oz144-GD100-RD0-sl-10, GoogleSansFlex-wg1-wd25-oz144-GD100-RD100-sl-10:
+    Contour 0 start point differs: 0 in GoogleSansFlex-wg1-wd25-oz144-GD100-RD0-sl-10, 1 in GoogleSansFlex-wg1-wd25-oz144-GD100-RD100-sl-10; reversed: True
+  Masters: GoogleSansFlex-wg1-wd100-oz144-GD100-RD0-sl-10, GoogleSansFlex-wg1-wd100-oz144-GD100-RD100-sl-10:
+    Contour 0 start point differs: 0 in GoogleSansFlex-wg1-wd100-oz144-GD100-RD0-sl-10, 1 in GoogleSansFlex-wg1-wd100-oz144-GD100-RD100-sl-10; reversed: True
+Glyph oslash was not compatible:
+  Masters: GoogleSansFlex-wg1000-wd100-oz6-GD0-RD100-sl-10, GoogleSansFlex-wg1-wd151-oz6-GD0-RD0-sl-10:
+    Contour 2 start point differs: 0 in GoogleSansFlex-wg1000-wd100-oz6-GD0-RD100-sl-10, 1 in GoogleSansFlex-wg1-wd151-oz6-GD0-RD0-sl-10; reversed: True
+Glyph slashshortcomb was not compatible:
+  Masters: GoogleSansFlex-wg1000-wd25-oz6-GD0-RD100-sl0, GoogleSansFlex-wg1-wd100-oz6-GD0-RD0-sl0:
+    Contour 0 start point differs: 0 in GoogleSansFlex-wg1000-wd25-oz6-GD0-RD100-sl0, 15 in GoogleSansFlex-wg1-wd100-oz6-GD0-RD0-sl0; reversed: True
+  Masters: GoogleSansFlex-wg1000-wd25-oz6-GD0-RD100-sl-10, GoogleSansFlex-wg1-wd100-oz6-GD0-RD0-sl-10:
+    Contour 0 start point differs: 0 in GoogleSansFlex-wg1000-wd25-oz6-GD0-RD100-sl-10, 15 in GoogleSansFlex-wg1-wd100-oz6-GD0-RD0-sl-10; reversed: True
+  Masters: GoogleSansFlex-wg1000-wd100-oz6-GD0-RD100-sl-10, GoogleSansFlex-wg1-wd151-oz6-GD0-RD0-sl-10:
+    Contour 0 start point differs: 0 in GoogleSansFlex-wg1000-wd100-oz6-GD0-RD100-sl-10, 15 in GoogleSansFlex-wg1-wd151-oz6-GD0-RD0-sl-10; reversed: True
+  Masters: GoogleSansFlex-wg1000-wd25-oz6-GD100-RD100-sl0, GoogleSansFlex-wg1-wd100-oz6-GD100-RD0-sl0:
+    Contour 0 start point differs: 0 in GoogleSansFlex-wg1000-wd25-oz6-GD100-RD100-sl0, 15 in GoogleSansFlex-wg1-wd100-oz6-GD100-RD0-sl0; reversed: True
+  Masters: GoogleSansFlex-wg1000-wd25-oz6-GD100-RD100-sl-10, GoogleSansFlex-wg1-wd100-oz6-GD100-RD0-sl-10:
+    Contour 0 start point differs: 0 in GoogleSansFlex-wg1000-wd25-oz6-GD100-RD100-sl-10, 15 in GoogleSansFlex-wg1-wd100-oz6-GD100-RD0-sl-10; reversed: True
+Glyph slashshortcomb.case was not compatible:
+  Masters: GoogleSansFlex-wg1000-wd25-oz6-GD0-RD100-sl0, GoogleSansFlex-wg1-wd100-oz6-GD0-RD0-sl0:
+    Contour 0 start point differs: 0 in GoogleSansFlex-wg1000-wd25-oz6-GD0-RD100-sl0, 15 in GoogleSansFlex-wg1-wd100-oz6-GD0-RD0-sl0; reversed: True
+  Masters: GoogleSansFlex-wg1000-wd25-oz6-GD0-RD100-sl-10, GoogleSansFlex-wg1-wd100-oz6-GD0-RD0-sl-10:
+    Contour 0 start point differs: 0 in GoogleSansFlex-wg1000-wd25-oz6-GD0-RD100-sl-10, 15 in GoogleSansFlex-wg1-wd100-oz6-GD0-RD0-sl-10; reversed: True
+  Masters: GoogleSansFlex-wg1000-wd25-oz6-GD100-RD100-sl-10, GoogleSansFlex-wg1-wd100-oz6-GD100-RD0-sl-10:
+    Contour 0 start point differs: 0 in GoogleSansFlex-wg1000-wd25-oz6-GD100-RD100-sl-10, 15 in GoogleSansFlex-wg1-wd100-oz6-GD100-RD0-sl-10; reversed: True
+Command exited with non-zero status 1
+	Command being timed: "timeout 540 ./venv/bin/python -m fontTools.varLib.interpolatable googlesans-flex/sources/GoogleSansFlex/GoogleSansFlex.designspace"
+	User time (seconds): 352.17
+	System time (seconds): 26.25
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 6:18.53
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 918328
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 228647
+	Voluntary context switches: 3787
+	Involuntary context switches: 6341
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 0
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 1
+EXITCODE=1

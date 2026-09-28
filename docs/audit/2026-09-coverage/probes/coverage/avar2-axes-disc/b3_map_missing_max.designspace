@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<designspace format="5.0">
+<axes>
+  <axis tag="wght" name="Weight" minimum="100" default="400" maximum="900">
+    <map input="100" output="100"/><map input="400" output="400"/>
+  </axis>
+</axes><sources>
+  <source filename="L.ufo" name="L"><location><dimension name="Weight" xvalue="100"/></location></source>
+  <source filename="R.ufo" name="R"><location><dimension name="Weight" xvalue="400"/></location></source>
+</sources>
+</designspace>

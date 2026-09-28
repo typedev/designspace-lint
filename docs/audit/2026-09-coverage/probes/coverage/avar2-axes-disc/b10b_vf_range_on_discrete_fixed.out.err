@@ -1,0 +1,1 @@
+designspace-lint: cannot read b10b_vf_range_on_discrete_fixed.designspace: Cannot select a range over 'Italic' for variable font 'VF' because it's a discrete axis, use only 'userValue' instead.

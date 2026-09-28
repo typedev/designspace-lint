@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<designspace format="5.0">
+<axes>
+  <axis tag="wght" name="Weight" minimum="100" default="400" maximum="900">
+    <map input="100" output="0"/><map input="400" output="100"/><map input="900" output="200"/>
+  <labels><label uservalue="400" name="Regular" elidable="true"/></labels></axis>
+</axes><sources>
+  <source filename="L.ufo" name="L"><location><dimension name="Weight" xvalue="0"/></location></source>
+  <source filename="R.ufo" name="R"><location><dimension name="Weight" xvalue="100"/></location></source>
+  <source filename="B.ufo" name="B"><location><dimension name="Weight" xvalue="200"/></location></source>
+</sources>
+<variable-fonts><variable-font name="VF"><axis-subsets><axis-subset name="Weight" userminimum="100" userdefault="400" usermaximum="2000"/></axis-subsets></variable-font></variable-fonts>
+<instances>
+  <instance familyname="P" stylename="Huge" filename="i/h.ufo"><location><dimension name="Weight" uservalue="1200"/></location></instance>
+  <instance familyname="P" stylename="NoFile"><location><dimension name="Weight" uservalue="400"/></location></instance>
+</instances>
+</designspace>

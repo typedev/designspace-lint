@@ -1,0 +1,3 @@
+feature liga {
+    sub A V by A;
+} liga;

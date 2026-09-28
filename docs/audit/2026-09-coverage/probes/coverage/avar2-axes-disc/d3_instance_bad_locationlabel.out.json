@@ -1,0 +1,11 @@
+[
+  {
+    "severity": "info",
+    "category": "Instances",
+    "code": "3.8",
+    "description": "missing output path",
+    "location": "P Ghost",
+    "glyph": null,
+    "details": "no location for P Ghost"
+  }
+]

@@ -1,0 +1,11 @@
+[
+  {
+    "severity": "error",
+    "category": "Geometry",
+    "code": "1.0",
+    "description": "No axes defined in designspace",
+    "location": "[Italic:0]",
+    "glyph": null,
+    "details": ""
+  }
+]

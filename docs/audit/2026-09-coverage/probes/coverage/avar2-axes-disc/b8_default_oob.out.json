@@ -1,0 +1,11 @@
+[
+  {
+    "severity": "error",
+    "category": "Geometry",
+    "code": "1.2",
+    "description": "Axis default 50.0 not within range [100.0, 900.0]",
+    "location": "axis: Weight",
+    "glyph": null,
+    "details": ""
+  }
+]

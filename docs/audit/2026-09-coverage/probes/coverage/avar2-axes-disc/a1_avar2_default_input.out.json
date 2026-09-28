@@ -1,0 +1,20 @@
+[
+  {
+    "severity": "info",
+    "category": "Instances",
+    "code": "3.10",
+    "description": "no instances defined",
+    "location": "designspace",
+    "glyph": null,
+    "details": ""
+  },
+  {
+    "severity": "error",
+    "category": "Font Info",
+    "code": "6.0",
+    "description": "unitsPerEm differs: 2048 (default: 1000)",
+    "location": "B.ufo",
+    "glyph": null,
+    "details": ""
+  }
+]

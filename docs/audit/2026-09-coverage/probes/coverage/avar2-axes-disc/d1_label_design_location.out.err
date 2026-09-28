@@ -1,0 +1,1 @@
+designspace-lint: cannot read d1_label_design_location.designspace: <label> element "Foo" must only have user locations (using uservalue="").

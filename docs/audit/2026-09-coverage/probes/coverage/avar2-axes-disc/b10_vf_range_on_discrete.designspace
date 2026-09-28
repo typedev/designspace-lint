@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<designspace format="5.0">
+<axes>
+  <axis tag="wght" name="Weight" minimum="100" default="400" maximum="900"/>
+  <axis tag="ital" name="Italic" values="0 1" default="0"/>
+</axes>
+<sources>
+  <source filename="L.ufo" name="L"><location><dimension name="Weight" xvalue="100"/><dimension name="Italic" xvalue="0"/></location></source>
+  <source filename="R.ufo" name="R"><location><dimension name="Weight" xvalue="400"/><dimension name="Italic" xvalue="0"/></location></source>
+</sources>
+<variable-fonts>
+  <variable-font name="VF">
+    <axis-subsets>
+      <axis-subset name="Italic" userminimum="0" usermaximum="1"/>
+    </axis-subsets>
+  </variable-font>
+</variable-fonts>
+</designspace>

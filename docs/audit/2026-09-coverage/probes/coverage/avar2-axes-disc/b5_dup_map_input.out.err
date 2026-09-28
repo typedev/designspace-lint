@@ -1,0 +1,1 @@
+designspace-lint: cannot read b5_dup_map_input.designspace: Axis 'Weight': mapping input value 400.0 has conflicting outputs 440.0 and 460.0.

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<designspace format="5.0">
+<axes>
+  <axis tag="wght" name="Weight" minimum="100" default="400" maximum="900"/>
+  <axis tag="wdth" name="Width" minimum="50" default="100" maximum="100"/>
+</axes>
+<sources>
+  <source filename="R.ufo" name="R"><location><dimension name="Weight" xvalue="400"/></location></source>
+  <source filename="H.ufo" name="H"><location><dimension name="Weight" xvalue="400"/><dimension name="Width" xvalue="100"/></location></source>
+  <source filename="B.ufo" name="B"><location><dimension name="Weight" xvalue="900"/></location></source>
+</sources>
+</designspace>

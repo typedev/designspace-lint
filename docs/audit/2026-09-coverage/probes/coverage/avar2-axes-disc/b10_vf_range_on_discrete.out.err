@@ -1,0 +1,1 @@
+designspace-lint: cannot read b10_vf_range_on_discrete.designspace: axis-subset element must have min/max/default values or none at all.

@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<designspace format="5.0">
+  <axes>
+    <axis tag="ital" name="italic" values="0 abc 1" default="0"/>
+  </axes>
+</designspace>

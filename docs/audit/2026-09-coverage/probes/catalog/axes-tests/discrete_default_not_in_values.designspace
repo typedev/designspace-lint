@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<designspace format="5.0">
+  <axes>
+    <axis tag="ital" name="italic" values="0 1" default="2"/>
+  </axes>
+  <sources>
+    <source filename="Regular.ufo">
+      <location><dimension name="italic" xvalue="0"/></location>
+    </source>
+  </sources>
+</designspace>

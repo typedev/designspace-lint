@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<designspace format="5.0">
+  <axes>
+    <axis tag="wght" name="weight" minimum="100" maximum="900" default="100"/>
+  </axes>
+  <sources>
+    <source name="default" filename="default.ufo">
+      <location>
+        <dimension name="weight" xvalue="100"/>
+      </location>
+    </source>
+    <source name="medium" filename="medium.ufo">
+      <location>
+        <dimension name="weight" xvalue="500"/>
+      </location>
+    </source>
+    <source name="bold" filename="bold.ufo">
+      <location>
+        <dimension name="weight" xvalue="900"/>
+      </location>
+    </source>
+  </sources>
+</designspace>

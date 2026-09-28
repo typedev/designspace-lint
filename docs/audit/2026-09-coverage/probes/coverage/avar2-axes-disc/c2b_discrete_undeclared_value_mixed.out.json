@@ -1,0 +1,20 @@
+[
+  {
+    "severity": "info",
+    "category": "Instances",
+    "code": "3.10",
+    "description": "no instances defined",
+    "location": "designspace [Italic:0]",
+    "glyph": null,
+    "details": ""
+  },
+  {
+    "severity": "error",
+    "category": "Sources",
+    "code": "2.5",
+    "description": "No default source defined or found",
+    "location": "[Italic:1]",
+    "glyph": null,
+    "details": ""
+  }
+]
