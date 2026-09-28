@@ -68,7 +68,7 @@ from .raw_xml import (
     undeclared_axis_dimensions_from_string,
 )
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 #: A problem found in a designspace. The name the checks use internally is
 #: `CheckResult`; this is the same class, named for the reader.

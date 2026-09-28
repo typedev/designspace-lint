@@ -70,6 +70,36 @@ from designspace_lint import lint
 problems = lint(my_designspace)     # nothing is re-opened
 ```
 
+### Building on the results
+
+A tool that shows the findings needs more than the numbers, and all of it is
+public, so a new release does not need code changes on the consuming side:
+
+- **`CODES`** (`designspace_lint.codes`) describes every `(category, code)`:
+  a title, a stable `group` slug and its title, the `default_severity` and
+  every severity it can take, the phase, whether it needs `interpolatable`,
+  whether it is `retired`, and its `locators`. Build filter groups from it.
+  A test keeps it in step with the checks.
+- **`severity`** is set on every result that comes through `lint()`.
+  `effective_severity(result)` gives the same answer for a result from a
+  checker called directly.
+- **Locators**: the `raw_data` keys `CODES[...].locators` lists are present on
+  every finding with that code (`instanceName`, `instanceIndex`,
+  `sourceName`, `layerName`, `axisName`, `ruleName`, `glyphName`,
+  `mappingIndex`). Use them to find what a finding is about instead of
+  parsing `location`.
+- **Scoped runs**: `lint(ds, phases=["glyphs"], glyphs=["a", "b"])`
+  rechecks a few glyphs; "file" and "geometry" always run.
+- **Helpers**: `label_for_source(source)` names a master the way findings do.
+  `raw_glyph_order(font)` and `dedupe_glyph_order(order)` read a glyph order
+  that fontParts would refuse. `undeclared_axis_dimensions(path)` (or
+  `..._from_string(text)`) lists the location dimensions fontTools will drop
+  on read, which is worth checking before an editor saves over the file.
+
+The `(category, code)` numbers never change meaning. A public name is
+deprecated for one minor release before it goes, and each release's
+changelog has a "For consumers" section.
+
 ## What it checks
 
 | Category | What it looks at |

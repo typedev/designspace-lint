@@ -32,6 +32,8 @@ pytest -q
 
 ## Invariants
 
+- **Every code is in `designspace_lint/codes.py` (`CODES`).** A new check needs an entry (title, group, severities, locators); `tests/test_codes.py` fails otherwise, and the autouse fixture in `tests/conftest.py` fails any test whose findings disagree with the catalogue (unknown or retired code, a severity not listed, a promised `raw_data` locator missing). Locators are only ever added. Consumers (Font-Rover) build their UI from `CODES`; each release gets a "For consumers" changelog section and public names are deprecated one minor release before removal.
+
 - **`(category, code)` pairs are a public contract.** Never renumber or reuse a code; new checks get new numbers. Codes 4.0–4.10 match designspaceProblems (LettError) and must keep that meaning.
 - **No toolkit or host-app imports** (`gi`, `gtk`, `adw`, `font_rover`) anywhere in the package, even lazy or under `TYPE_CHECKING` — enforced by `tests/test_designspace_lint_isolation.py`.
 - **Rules must match what fontTools/ufo2ft actually do**, verified rather than assumed. Don't encode naming conventions (e.g. "sparse" in a source name) as rules. Differing kerning pair sets are normal and not reported; a master with *no* kerning is. A designspace 5 source may omit axes it is default on.

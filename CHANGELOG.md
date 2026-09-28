@@ -5,18 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-09-28
+
+A public surface for tools that show the findings. It was agreed with
+Font-Rover, the editor the checks came from, so that a new release needs no
+code changes on its side.
+
+### Added
+
+- **`designspace_lint.codes.CODES`**, a catalogue of every
+  `(category, code)`. Each entry has a title, a stable `group` slug and group
+  title, the default severity and every severity the code can take, the
+  phase, whether it needs `interpolatable`, whether it is `retired`, and its
+  `locators`.
+  - A test keeps the catalogue in step with the source.
+  - The suite checks every finding it produces against the catalogue, and a
+    run over the audit's probe designspaces exercises most codes for real.
+  - Codes that are declared but never reported (1.5, 1.10–1.12, 2.8, 2.9,
+    9.1, 9.2) are listed as retired, and their numbers stay taken.
+- **Every result from `lint()` carries an explicit `severity`.**
+  `effective_severity(result)` gives the same answer for results from a
+  checker called directly. The CLI uses it too.
+- **Locators**: `raw_data` keys that are guaranteed per code, listed in
+  `CODES[...].locators`.
+  - 10.0 and the 3.x instance findings now carry `instanceName` and
+    `instanceIndex`.
+  - 2.x source findings carry `sourceName`.
+  - 4.11 carries `axisName`.
+- **Scoped runs**: `lint(..., phases=[...], glyphs=[...])`, also on
+  `iter_lint`, `lint_path` and `Linter`. "file" and "geometry" always run,
+  and `glyphs=` restricts the glyph phases.
+- **Public helpers**:
+  - `label_for_source`
+  - `raw_glyph_order` and `dedupe_glyph_order`
+  - `undeclared_axis_dimensions` and `undeclared_axis_dimensions_from_string`,
+    which list what fontTools will drop on read and so what a
+    `DesignSpaceDocument.write()` would lose.
 
 ### Fixed
 
 - **10.0 no longer flags an instance that has localised style names in any
   language.** The split keeps an instance's own localised names whenever there
-  are any, and fvar then adds English from `stylename` itself. Only an instance
-  with no localised names at all is renamed from the labels. 0.5.0 skipped
-  only instances with an explicit `xml:lang="en"` name, so a document with,
-  say, German names alone got a finding for every instance. Reported by the
-  DSSketch agent and confirmed in `designspaceLib/split.py` and
-  `varLib._add_fvar`.
+  are any, and fvar then adds English from `stylename` itself. 0.5.0 skipped
+  only an explicit `xml:lang="en"`, so a document with German names alone got
+  a finding for every instance. The DSSketch agent reported it, and it is
+  confirmed in `designspaceLib/split.py` and `varLib._add_fvar`.
+
+### For consumers
+
+- New public names: `CODES`, `CodeInfo`, `code_info`, `effective_severity`,
+  `label_for_source`, `raw_glyph_order`, `dedupe_glyph_order`,
+  `undeclared_axis_dimensions`, `undeclared_axis_dimensions_from_string` and
+  `StrayDimension`.
+- New parameters `phases=` and `glyphs=` on `lint`, `iter_lint`, `lint_path`
+  and `Linter`.
+- Deprecated, and removed in 0.7:
+  - `glyph_order._raw_glyph_order` and `glyph_order._first_wins`; use the
+    public names.
+  - Calling `GlyphsChecker(...).check_glyphs()` for a partial recheck; use
+    `lint(..., phases=["glyphs"], glyphs=[...])`.
+- `raw_data` gained keys and lost none.
+- No code changed its number, severity or meaning, apart from the 10.0 fix
+  above.
 
 ## [0.5.0] - 2026-09-28
 
