@@ -315,6 +315,7 @@ class LabelsChecker(BaseChecker):
             locations.append((name or "an unnamed instance", location, (index, instance)))
 
         elided_everywhere = []
+        elided_instances = []  # their indices, for a consumer to point at
         for where, location, indexed in locations:
             index, instance = indexed if indexed else (None, None)
             locator = {"instanceName": instance.name, "instanceIndex": index} if instance else {}
@@ -342,6 +343,8 @@ class LabelsChecker(BaseChecker):
                 continue
             if stat == "":
                 elided_everywhere.append(where)
+                if instance is not None:
+                    elided_instances.append(index)
             if instance is None or not instance.styleName:
                 continue
             # The split replaces the instance's localised names with the label
@@ -405,7 +408,7 @@ class LabelsChecker(BaseChecker):
                 ),
                 is_structural=False,
                 severity=SEVERITY_DESIGN,
-                raw_data={"locations": elided_everywhere},
+                raw_data={"locations": elided_everywhere, "instanceIndices": elided_instances},
             )
 
     def _check_variable_fonts(self, doc) -> Iterator[CheckResult]:

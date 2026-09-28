@@ -281,6 +281,18 @@ class BaseChecker(ABC):
             return f"{name} ({style})" if name else str(style)
         return name or str(getattr(source, "name", "") or "")
 
+    @staticmethod
+    def _designspace_name(source) -> str:
+        """The `sourceName` locator: the name the designspace gives the source.
+
+        Falls back to the UFO file name, as the sources checks do.
+        """
+        name = getattr(source, "name", None)
+        if name:
+            return str(name)
+        path = getattr(source, "path", None)
+        return Path(str(path)).name if path else ""
+
     def _label(self, source) -> str:
         """`_source_label`, remembered per run.
 

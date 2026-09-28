@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Every live code is produced by at least one test, and the suite enforces
+  it.** A full `pytest` run now fails when a code that is not retired was
+  never produced, the same way four checks went silent before 0.1.2. 18 codes
+  had no test: 0.0, 1.0, 1.3, 1.8, 1.13, 2.2, 2.7, 3.1, 4.10, 4.17, 5.1, 5.7,
+  5.9, 6.1, 6.2, 7.4, 7.6 and 8.0.
+- **More locators.**
+  - `sourceName` on the per-master kerning (5.x), font info (6.x) and
+    unreadable-features (8.0) findings.
+  - `instanceIndices` on 10.2: the instances whose labels are all elided.
+
+### Fixed
+
+- **2.7 (layer not found) was skipped when a checker was given only a
+  document**, even though the source path fontTools reads is absolute. It now
+  needs a document folder only for a relative path.
+
+### For consumers
+
+- New locators: `sourceName` on 5.0–5.3, 5.5–5.9, 6.0–6.2 and 8.0, and
+  `instanceIndices` on 10.2. `raw_data` gained keys and lost none.
+
 ## [0.6.0] - 2026-09-28
 
 A public surface for tools that show the findings. It was agreed with

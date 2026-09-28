@@ -149,3 +149,43 @@ def test_one_problem_across_several_master_pairs_is_one_finding():
     assert len(results) == 1
     assert len(results[0].raw_data["pairs"]) == 2
     assert "1 more master pair" in results[0].description
+
+
+def test_a_smooth_point_that_turns_into_a_corner_halfway_is_noted():
+    """Handles collinear in both masters, but in another ratio and direction.
+
+    Halfway between, the two handles no longer line up: the curve kinks at
+    that point. Tuned to interpolatable's own thresholds (0.5 rad, 1:4 against
+    4:1 handles).
+    """
+    import math
+
+    from designspace_lint.checkers.interpolation import KINK
+    from fakes import FakeContour, FakePoint
+
+    def glyph(before, after):
+        return FakeGlyph(
+            "a",
+            contours=[
+                FakeContour(
+                    [
+                        FakePoint(0, 0, "line"),
+                        FakePoint(1000, 0, "line"),
+                        FakePoint(1000, 300, "offcurve"),
+                        FakePoint(*before, "offcurve"),
+                        FakePoint(500, 500, "curve"),
+                        FakePoint(*after, "offcurve"),
+                        FakePoint(0, 700, "offcurve"),
+                        FakePoint(0, 1000, "curve"),
+                    ]
+                )
+            ],
+        )
+
+    dx, dy = math.cos(0.5), math.sin(0.5)
+    light = glyph((400, 500), (900, 500))
+    bold = glyph((500 - 400 * dx, 500 - 400 * dy), (500 + 100 * dx, 500 + 100 * dy))
+    results = [r for r in _interpolation(_two_masters({"a": light}, {"a": bold})) if r.code == KINK]
+
+    assert len(results) == 1
+    assert results[0].raw_data["point"] == 4

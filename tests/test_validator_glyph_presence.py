@@ -13,6 +13,7 @@ the default master is dropped from the compiled font altogether.
 
 from designspace_lint.checkers.glyphs import (
     DEFAULT_GLYPH_EMPTY,
+    DIFFERENT_UNICODES,
     GLYPH_AXIS_SPAN_GAP,
     GLYPH_EMPTY_IN_SOURCE,
     GLYPH_STATIC,
@@ -315,3 +316,14 @@ def test_an_empty_glyph_at_the_end_of_an_axis_reverts_like_a_missing_one():
 
     assert (GLYPH_EMPTY_IN_SOURCE, "A") in codes
     assert (GLYPH_AXIS_SPAN_GAP, "A") in codes
+
+
+def test_different_unicodes_across_masters_are_reported():
+    entry = _weight_entry(
+        [
+            {"A": FakeGlyph("A", unicodes=[0x41], contours=[[(0, 0), (1, 0), (1, 1)]])},
+            {"A": FakeGlyph("A", unicodes=[0x41], contours=[[(0, 0), (2, 0), (2, 2)]])},
+            {"A": FakeGlyph("A", unicodes=[0x391], contours=[[(0, 0), (3, 0), (3, 3)]])},
+        ]
+    )
+    assert (DIFFERENT_UNICODES, "A") in _codes(entry)

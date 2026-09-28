@@ -14,7 +14,9 @@ they are written in -- verified by compiling both orders with fontTools 4.65.
 from fontTools.designspaceLib import RuleDescriptor
 
 from designspace_lint.checkers.rules import (
+    RULE_DUPLICATE_NAME,
     RULE_NO_CONDITIONS,
+    RULE_NO_SUBSTITUTIONS,
     RULE_OVERLAP,
     RULE_RANGE_OUT_OF_BOUNDS,
     RULE_UNDEFINED_GLYPH,
@@ -153,3 +155,16 @@ def test_overlapping_rules_on_different_glyphs_are_fine():
         _rule("two", {"b": "b.alt"}, {"Weight": (600, 900)}),
     )
     assert results == []
+
+
+def test_a_rule_without_substitutions_is_reported():
+    results = _check('<rule name="empty"><conditionset/></rule>')
+    assert RULE_NO_SUBSTITUTIONS in [r.code for r in results]
+
+
+def test_two_rules_with_one_name_are_reported():
+    results = _check(
+        _rule("heavy", {"a": "a.alt"}, {"Weight": (700, 900)}),
+        _rule("heavy", {"b": "b.alt"}, {"Weight": (700, 900)}),
+    )
+    assert RULE_DUPLICATE_NAME in [r.code for r in results]

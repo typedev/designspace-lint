@@ -71,7 +71,10 @@ class FontInfoChecker(BaseChecker):
                 description="Default source missing unitsPerEm",
                 location=default_source.path.name,
                 is_structural=True,  # This is actually structural
-                raw_data={"field": "unitsPerEm"},
+                raw_data={
+                    "field": "unitsPerEm",
+                    "sourceName": self._designspace_name(default_source),
+                },
             )
             return
 
@@ -90,6 +93,7 @@ class FontInfoChecker(BaseChecker):
                     is_structural=True,  # Different UPM is structural
                     raw_data={
                         "field": "unitsPerEm",
+                        "sourceName": self._designspace_name(source),
                         "sourceValue": source_upm,
                         "defaultValue": default_upm,
                     },
@@ -111,6 +115,7 @@ class FontInfoChecker(BaseChecker):
                         is_structural=False,
                         raw_data={
                             "field": field,
+                            "sourceName": self._designspace_name(source),
                             "sourceValue": source_val,
                             "defaultValue": default_val,
                         },

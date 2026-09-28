@@ -85,8 +85,8 @@ public, so a new release does not need code changes on the consuming side:
   checker called directly.
 - **Locators**: the `raw_data` keys `CODES[...].locators` lists are present on
   every finding with that code (`instanceName`, `instanceIndex`,
-  `sourceName`, `layerName`, `axisName`, `ruleName`, `glyphName`,
-  `mappingIndex`). Use them to find what a finding is about instead of
+  `instanceIndices`, `sourceName`, `layerName`, `axisName`, `ruleName`,
+  `glyphName`, `mappingIndex`). Use them to find what a finding is about instead of
   parsing `location`.
 - **Scoped runs**: `lint(ds, phases=["glyphs"], glyphs=["a", "b"])`
   rechecks a few glyphs; "file" and "geometry" always run.

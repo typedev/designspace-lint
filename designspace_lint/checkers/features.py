@@ -114,7 +114,7 @@ class FeaturesChecker(BaseChecker):
                     location=source_name,
                     details=str(e),
                     is_structural=False,
-                    raw_data={"error": str(e)},
+                    raw_data={"error": str(e), "sourceName": self._designspace_name(source)},
                 )
 
         # 8,1: Check feature consistency

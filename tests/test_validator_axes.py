@@ -13,8 +13,11 @@ while every other mapping shifts.
 
 from designspace_lint.checkers.axes import (
     AVAR2_MAPPING_FROM_DEFAULT,
+    AXIS_MAP_INPUT_NOT_INCREASING,
     AXIS_MAP_NO_DEFAULT,
+    AXIS_MAP_ONE_PAIR,
     DISCRETE_DEFAULT_NOT_IN_VALUES,
+    DUPLICATE_AXIS_NAME,
     NO_AXES,
     NO_CONTINUOUS_AXIS,
     VF_RANGE_ON_DISCRETE_AXIS,
@@ -302,3 +305,32 @@ def test_a_hidden_axis_may_run_any_way_it_likes():
         _mapping({"Weight": 900}, {"Hid": 20}),
     )
     assert AVAR2_NOT_MONOTONIC not in codes
+
+
+# --- the designspaceProblems geometry codes ------------------------------------
+
+
+def test_a_document_without_axes_is_reported():
+    assert _codes(ds("")) == [NO_AXES]
+
+
+def test_a_map_with_one_pair_is_reported():
+    axis = (
+        '<axis tag="wght" name="Weight" minimum="100" default="400" maximum="900">'
+        '<map input="400" output="80"/></axis>'
+    )
+    assert AXIS_MAP_ONE_PAIR in _codes(ds(axis))
+
+
+def test_map_inputs_out_of_order_are_reported():
+    axis = (
+        '<axis tag="wght" name="Weight" minimum="100" default="400" maximum="900">'
+        '<map input="100" output="20"/><map input="900" output="200"/>'
+        '<map input="400" output="80"/></axis>'
+    )
+    assert AXIS_MAP_INPUT_NOT_INCREASING in _codes(ds(axis))
+
+
+def test_two_axes_with_one_name_are_reported():
+    other = '<axis tag="wdth" name="Weight" minimum="50" default="100" maximum="200"/>'
+    assert DUPLICATE_AXIS_NAME in _codes(ds(WEIGHT + other))

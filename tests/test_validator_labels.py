@@ -208,3 +208,16 @@ def test_a_renamed_instance_can_be_found_without_parsing_its_location():
     assert [(r.raw_data["instanceName"], r.raw_data["instanceIndex"]) for r in results] == [
         ("Fam-Heavy", 1)
     ]
+
+
+def test_the_nameless_instances_are_listed_by_index():
+    results = [
+        r
+        for r in _check(
+            _weight(REGULAR, BOLD),
+            _instance("Bold", 700) + _instance("Regular", 400),
+            fallback=False,
+        )
+        if r.code == ALL_ELIDED_NO_FALLBACK
+    ]
+    assert results[0].raw_data["instanceIndices"] == [1]

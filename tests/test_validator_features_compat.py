@@ -16,6 +16,7 @@ import pytest
 pytest.importorskip("ufo2ft")
 
 from designspace_lint.checkers.features import (
+    FEATURE_FILE_CORRUPT,
     FEATURES_DIFFER_FROM_DEFAULT,
     FeaturesChecker,
 )
@@ -96,3 +97,8 @@ def test_a_large_mix_still_produces_a_single_row():
     assert len(results) == 1
     assert "40 match the default" in results[0].description
     assert "40 are empty" in results[0].description
+
+
+def test_a_features_file_that_does_not_parse_is_reported_once_per_master():
+    entry = _entry("feature kern { pos A V -10; } kern;", "feature kern { pos A V ")
+    assert _codes(entry).count(FEATURE_FILE_CORRUPT) == 1

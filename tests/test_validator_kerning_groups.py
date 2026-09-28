@@ -13,12 +13,15 @@ glyph claimed by two groups of the same side (the second group is discarded).
 
 from designspace_lint.checkers.kerning import (
     GLYPH_IN_TWO_KERN_GROUPS,
+    KERNING_GROUP_SORTED_DIFF,
+    KERNING_KEY_MALFORMED,
     KERNING_GROUP_DIFFERS,
     NO_KERNING_GROUPS_SOURCE,
+    NO_KERNING_IN_DEFAULT,
     NO_KERNING_IN_SOURCE,
     KerningChecker,
 )
-from designspace_lint.model import SEVERITY_DESIGN
+from designspace_lint.model import SEVERITY_DESIGN, SEVERITY_INFO
 from fakes import build_designspace
 
 GROUPS = {"public.kern1.A": ["A", "Agrave"], "public.kern2.V": ["V", "W"]}
@@ -182,3 +185,76 @@ def test_layer_masters_are_skipped():
     )
 
     assert _codes(entry) == []
+
+
+# --- 5.1, 5.7, 5.9 -----------------------------------------------------------
+
+
+def test_a_default_without_kerning_is_reported():
+    entry = _entry(
+        {
+            "name": "Bold",
+            "location": {"Weight": 100},
+            "glyphs": ["A", "Agrave", "V", "W"],
+            "groups": GROUPS,
+            "kerning": KERNING,
+        },
+        first_source={
+            "name": "Light",
+            "location": {"Weight": 0},
+            "glyphs": ["A", "Agrave", "V", "W"],
+            "groups": GROUPS,
+        },
+    )
+    assert NO_KERNING_IN_DEFAULT in _codes(entry)
+
+
+def test_group_members_in_another_order_are_only_noted():
+    """ufo2ft sorts members before use, so the order never reaches the build."""
+    entry = _entry(
+        {
+            "name": "Bold",
+            "location": {"Weight": 100},
+            "glyphs": ["A", "Agrave", "V", "W"],
+            "groups": {"public.kern1.A": ["Agrave", "A"], "public.kern2.V": ["V", "W"]},
+            "kerning": KERNING,
+        }
+    )
+    results = [
+        r for r in KerningChecker(entry=entry).check() if r.code == KERNING_GROUP_SORTED_DIFF
+    ]
+    assert len(results) == 1
+    assert results[0].severity == SEVERITY_INFO
+
+
+def test_a_kerning_key_fontparts_refuses_is_reported_and_the_rest_still_read():
+    """fontParts raises on an empty side; the raw kerning is read around it."""
+    entry = _entry(
+        {
+            "name": "Bold",
+            "location": {"Weight": 100},
+            "glyphs": ["A", "Agrave", "V", "W"],
+            "groups": GROUPS,
+            "kerning": KERNING,
+        }
+    )
+    font = entry.sources[1].font
+    raw = {**KERNING, ("", "V"): -10}
+
+    class Refusing:
+        """What fontParts' kerning does with such a key: refuses to hand it over."""
+
+        def keys(self):
+            raise ValueError("Kerning key items must be at least one character long")
+
+        __iter__ = keys
+
+    class Naked:
+        kerning = raw
+
+    font.kerning = Refusing()
+    font.naked = lambda: Naked()
+
+    codes = _codes(entry)
+    assert KERNING_KEY_MALFORMED in codes
+    assert NO_KERNING_IN_SOURCE not in codes  # the readable pair still counted

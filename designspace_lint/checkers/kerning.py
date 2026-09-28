@@ -115,7 +115,10 @@ class KerningChecker(BaseChecker):
                 description="no kerning in default",
                 location=default_name,
                 is_structural=False,
-                raw_data={"font": default_name},
+                raw_data={
+                    "font": default_name,
+                    "sourceName": self._designspace_name(default_source),
+                },
             )
 
         # 5,5: No kerning groups in default
@@ -130,7 +133,10 @@ class KerningChecker(BaseChecker):
                 description="no kerning groups in default",
                 location=default_name,
                 is_structural=False,
-                raw_data={"font": default_name},
+                raw_data={
+                    "font": default_name,
+                    "sourceName": self._designspace_name(default_source),
+                },
             )
 
         # Check each source against default
@@ -176,7 +182,11 @@ class KerningChecker(BaseChecker):
                         f"the kerning sags toward zero around it. If the master is meant to "
                         f"correct outlines only, a layer of a full UFO says so in every version."
                     ),
-                    raw_data={"font": source_name, "hasGroups": bool(source_groups)},
+                    raw_data={
+                        "font": source_name,
+                        "sourceName": self._designspace_name(source),
+                        "hasGroups": bool(source_groups),
+                    },
                 )
                 continue
 
@@ -194,7 +204,10 @@ class KerningChecker(BaseChecker):
                             f"default has {len(default_groups)}. Its flat pairs still apply, "
                             f"but every class pair resolves to 0 at this master."
                         ),
-                        raw_data={"font": source_name},
+                        raw_data={
+                            "font": source_name,
+                            "sourceName": self._designspace_name(source),
+                        },
                     )
                 continue
 
@@ -210,7 +223,11 @@ class KerningChecker(BaseChecker):
                         location=source_name,
                         group_name=group_name,
                         is_structural=False,
-                        raw_data={"font": source_name, "groupName": group_name},
+                        raw_data={
+                            "font": source_name,
+                            "sourceName": self._designspace_name(source),
+                            "groupName": group_name,
+                        },
                     )
                 else:
                     default_members = default_groups[group_name]
@@ -233,6 +250,7 @@ class KerningChecker(BaseChecker):
                                 is_structural=False,
                                 raw_data={
                                     "font": source_name,
+                                    "sourceName": self._designspace_name(source),
                                     "groupName": group_name,
                                     "sourceMembers": source_members,
                                     "defaultMembers": default_members,
@@ -250,6 +268,7 @@ class KerningChecker(BaseChecker):
                                 is_structural=False,
                                 raw_data={
                                     "font": source_name,
+                                    "sourceName": self._designspace_name(source),
                                     "groupName": group_name,
                                     "sourceMembers": source_members,
                                     "defaultMembers": default_members,
@@ -277,7 +296,11 @@ class KerningChecker(BaseChecker):
                 "kerning is lost on the way to the compiler. The pairs that can be read were "
                 "still checked."
             ),
-            raw_data={"font": self._label(source), "keys": [list(k) for k in malformed[:20]]},
+            raw_data={
+                "font": self._label(source),
+                "sourceName": self._designspace_name(source),
+                "keys": [list(k) for k in malformed[:20]],
+            },
         )
 
     def _check_group_overlaps(self, sources) -> Iterator[CheckResult]:
@@ -316,6 +339,7 @@ class KerningChecker(BaseChecker):
                                 ),
                                 raw_data={
                                     "font": source_name,
+                                    "sourceName": self._designspace_name(source),
                                     "glyphName": glyph_name,
                                     "groupName": group_name,
                                     "otherGroup": seen[glyph_name],

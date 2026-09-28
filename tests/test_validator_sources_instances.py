@@ -12,6 +12,7 @@ say anything when the file is read.
 """
 
 from designspace_lint.checkers.instances import (
+    INSTANCE_LOCATION_MISSING,
     INSTANCE_UNDEFINED_AXIS,
     INSTANCE_MULTIPLE_ON_LOCATION,
     INSTANCE_NAME_REUSED,
@@ -21,7 +22,9 @@ from designspace_lint.checkers.instances import (
 )
 from designspace_lint.checkers.sources import (
     DUPLICATE_SOURCE_LOCATION,
+    SOURCE_LAYER_NOT_FOUND,
     SOURCE_LOCATION_MISSING_AXIS,
+    SOURCE_NOT_VALID_UFO,
     SOURCE_OFF_DISCRETE_VALUES,
     SourcesChecker,
 )
@@ -181,3 +184,76 @@ def test_a_dimension_on_an_undeclared_axis_is_read_from_the_file(tmp_path):
 def test_a_clean_file_has_no_stray_dimensions(tmp_path):
     doc = written(tmp_path, WEIGHT, source("R.ufo", Weight=400))
     assert list(SourcesChecker(doc=doc).check_document(doc)) == []
+
+
+# --- files on disk: 2.2, 2.7 ------------------------------------------------
+
+
+def _ufo(path, layers=("public.default",)):
+    """A UFO directory with just enough on disk for the file checks."""
+    import plistlib
+
+    path.mkdir()
+    (path / "metainfo.plist").write_bytes(plistlib.dumps({"formatVersion": 3}))
+    (path / "glyphs").mkdir()
+    contents = [
+        [name, "glyphs" if name == "public.default" else f"glyphs.{name}"] for name in layers
+    ]
+    (path / "layercontents.plist").write_bytes(plistlib.dumps(contents))
+    return path
+
+
+def test_a_source_that_is_not_a_ufo_is_reported(tmp_path):
+    (tmp_path / "Regular.ufo").write_text("not a directory")
+    doc = written(tmp_path, WEIGHT, source("Regular.ufo", Weight=400))
+    results = [r for r in SourcesChecker(doc=doc).check() if r.code == SOURCE_NOT_VALID_UFO]
+
+    assert [r.raw_data["sourceName"] for r in results] == ["Regular.ufo"]
+    assert not results[0].is_structural  # reported, but the other masters are still checked
+
+
+def test_a_source_layer_the_ufo_does_not_have_is_reported(tmp_path):
+    _ufo(tmp_path / "Family.ufo", layers=("public.default", "Bold"))
+    sources = (
+        source("Family.ufo", Weight=400)
+        + '<source filename="Family.ufo" name="Black" layer="Black"><location>'
+        '<dimension name="Weight" xvalue="900"/></location></source>'
+    )
+    doc = written(tmp_path, WEIGHT, sources)
+    results = [r for r in SourcesChecker(doc=doc).check() if r.code == SOURCE_LAYER_NOT_FOUND]
+
+    assert [r.raw_data["layerName"] for r in results] == ["Black"]
+
+
+def test_an_existing_layer_is_fine(tmp_path):
+    _ufo(tmp_path / "Family.ufo", layers=("public.default", "Bold"))
+    sources = (
+        source("Family.ufo", Weight=400)
+        + '<source filename="Family.ufo" name="Bold" layer="Bold"><location>'
+        '<dimension name="Weight" xvalue="900"/></location></source>'
+    )
+    doc = written(tmp_path, WEIGHT, sources)
+    assert SOURCE_LAYER_NOT_FOUND not in [r.code for r in SourcesChecker(doc=doc).check()]
+
+
+# --- 3.1 -------------------------------------------------------------------
+
+
+def test_an_instance_whose_location_cannot_be_resolved_is_reported():
+    """fontTools always resolves one for a document it read; a host object may not."""
+    from fontTools.designspaceLib import InstanceDescriptor
+
+    class Unplaced(InstanceDescriptor):
+        location = None
+
+        def getFullDesignLocation(self, doc):
+            raise ValueError("no location")
+
+    doc = ds(WEIGHT, source("R.ufo", Weight=400))
+    instance = Unplaced()
+    instance.designLocation = None
+    instance.familyName, instance.styleName, instance.filename = "Fam", "Lost", "Lost.ufo"
+    doc.instances.append(instance)
+
+    results = [r for r in InstancesChecker(doc=doc).check() if r.code == INSTANCE_LOCATION_MISSING]
+    assert [r.raw_data["instanceIndex"] for r in results] == [0]

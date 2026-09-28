@@ -368,14 +368,18 @@ class SourcesChecker(BaseChecker):
         layer_name = source.layerName
         path = source.path
 
-        if not path or not self.ds_dir:
+        if not path:
             return
 
-        # Resolve path
-        if not os.path.isabs(path):
+        # Resolve path. fontTools gives an absolute one when it read the file;
+        # a relative one needs the document's folder, and without it there is
+        # nothing to look at.
+        if os.path.isabs(path):
+            full_path = Path(path)
+        elif self.ds_dir:
             full_path = self.ds_dir / path
         else:
-            full_path = Path(path)
+            return
 
         if not full_path.exists() or not full_path.is_dir():
             return  # File issues already reported
