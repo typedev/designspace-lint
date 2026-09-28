@@ -5,14 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.0] - 2026-09-28
+
+The test suite now covers every code, and the names deprecated in 0.6.0 are
+removed.
+
+### Removed
+
+- `glyph_order._raw_glyph_order` and `glyph_order._first_wins`. Use
+  `raw_glyph_order` and `dedupe_glyph_order`.
+- `GlyphsChecker.check_glyphs()`. Use `lint(designspace, phases=["glyphs"],
+  glyphs=[...])`, which also does the discrete-axis slicing itself.
 
 ### Added
 
 - **Every live code is produced by at least one test, and the suite enforces
   it.** A full `pytest` run now fails when a code that is not retired was
-  never produced, the same way four checks went silent before 0.1.2. 18 codes
-  had no test: 0.0, 1.0, 1.3, 1.8, 1.13, 2.2, 2.7, 3.1, 4.10, 4.17, 5.1, 5.7,
+  never produced. An unexercised check is how four of them went silent before
+  0.1.2. 18 codes had no test: 0.0, 1.0, 1.3, 1.8, 1.13, 2.2, 2.7, 3.1, 4.10, 4.17, 5.1, 5.7,
   5.9, 6.1, 6.2, 7.4, 7.6 and 8.0.
 - **More locators.**
   - `sourceName` on the per-master kerning (5.x), font info (6.x) and
@@ -27,8 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### For consumers
 
+- The removals above are the only breaking change, and they only affect code
+  that did not act on the 0.6.0 deprecation warnings.
 - New locators: `sourceName` on 5.0–5.3, 5.5–5.9, 6.0–6.2 and 8.0, and
   `instanceIndices` on 10.2. `raw_data` gained keys and lost none.
+- No code changed its number, severity or meaning.
+- To upgrade a uv lock whose index cache predates the release:
+  `uv lock --upgrade-package designspace-lint --refresh-package designspace-lint`.
 
 ## [0.6.0] - 2026-09-28
 
