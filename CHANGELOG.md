@@ -5,6 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-09-27
+
+Prompted by an independent coverage audit (`docs/audit/2026-09-coverage/`).
+Every claim acted on here was checked again against fontTools 4.65 and ufo2ft
+3.9 source first (`VERIFICATION.md` there). Several did not hold as written,
+and one of ours had gone stale.
+
+### Fixed
+
+- **Checks no longer disappear silently.** A check that raised used to be
+  logged and dropped, along with the rest of its phase, while the exit code
+  looked normal. It is now a finding of its own (**0.1**). Three such crashes
+  were real and are fixed as well:
+  - a rule with no `<conditionset>` took every later rule with it;
+  - two instances at one location with no family name lost 3.4;
+  - an instance naming an unknown location label stopped the glyph-order phase.
+- **One discrete slice no longer silences the next.** The structural stop
+  was reset once per run, not once per slice, so after a problem in the
+  upright every italic slice was checked for its file and nothing else.
+- **A designspace with only discrete axes** reported "no axes defined" in
+  every slice and then stopped. Each slice has no axes by construction; the
+  document is now checked once for its axes, before it is split.
+- **A missing UFO no longer stops the run.** 2.1 and 2.2 are still errors,
+  but the masters that did open are checked. On Amstelvar A2 v2, 13 of 150
+  UFOs are missing and the other 137 used to go unexamined. 4.11 says when its
+  span was measured without some masters.
+- **Duplicate source locations are compared as varLib compares them (2.6)**,
+  with omitted axes filled in. `{Weight: 900}` and `{Weight: 900, Width: 100}`
+  at the default Width are one location to varLib ("Locations must be
+  unique") and were two to us.
+- **Rule glyphs are checked against the default master (7.5)**, which is what
+  varLib checks them against, minus `public.skipExportGlyphs`. Checking the
+  union of all masters passed a glyph drawn only in a sparse master, and the
+  build then refused the rule. Now an error.
+- **7.0 reported the wrong rule.** It flagged an empty `<conditionset/>`,
+  which the spec defines as always-on, and missed the case that matters: a
+  rule with no conditionset at all, which never applies and which fontTools
+  drops.
+- **Font info is compared against the designspace default (6.x)**, not
+  against whichever source is listed first.
+
+### Changed
+
+- **A master with no kerning (5.0) is a warning, not a structural error**, and
+  says what happens. Since ufo2ft 3.9 (ufo2ft#995) such a master is skipped
+  and the kerning interpolates across it. Up to 3.8 every pair resolves to 0
+  there, which is what the old message described.
+- **A map without an entry at the axis minimum or maximum (1.6, 1.7) is an
+  error.** varLib refuses to build it. Neither stops the run.
+
+### Added
+
+- **1.15**: an axis map with no entry at the axis default. varLib refuses:
+  "there must be a mapping for the axis default value".
+- **1.16**: a discrete axis whose default is not one of its values. The
+  masters at the default fall into no slice.
+- **1.17**: no continuous axis at all. This is informational, because a
+  family of static fonts is a fine thing to describe this way.
+- **1.18**: an avar2 mapping whose input is the default location. varLib
+  keeps it only as the base of a variation store that it discards, so the
+  mapping never applies, and every other mapping is measured from it. With
+  Weight 100/400/900, adding `400 → 650` to `900 → 700` moves normalized 1.0
+  from 0.6 to 0.1. Found in Amstelvar A2 v2 (`YTOS 11 → 10`).
+- **2.10 / 3.11**: a source or instance at a discrete-axis value the axis
+  does not declare. It belongs to no slice, and fontTools drops it without a
+  message.
+- **3.12**: an instance naming a location label that does not exist. The
+  file reads, but the split and the build fail on it.
+- **3.13**: two instances with one family and style name at different
+  locations.
+- **7.7**: two rules that substitute one glyph where their regions overlap.
+  varLib does not settle this by declaration order. It numbers the lookups by
+  sorting their substitutions, so declared `a → a.zzz` then `a → a.aaa`, the
+  variable font shows `a.aaa`, while static instances show `a.zzz`. The
+  finding names the rule the variable font will use.
+
 ## [0.1.2] - 2026-09-23
 
 ### Fixed

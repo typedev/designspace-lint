@@ -7,9 +7,10 @@ designspace-lint — what a designspace will do when it is built.
 The checks here are not opinions about style. Each one describes something
 fontTools, varLib or ufo2ft actually does with a designspace, usually without
 saying so: a glyph missing from the master at the end of an axis reverts to the
-default's shape past that point; a master with no kerning drags the family's
-kerning toward zero around it; a `features.fea` that differs from the default's
-pushes the whole build onto a path where varLib fails somewhere else entirely.
+default's shape past that point; an avar2 mapping written at the default is
+discarded and every other mapping shifts; a `features.fea` that differs from
+the default's pushes the whole build onto a path where varLib fails somewhere
+else entirely.
 Each result names the consequence, not just the discrepancy.
 
 Two ways in::
@@ -57,7 +58,7 @@ from .model import (
 )
 from .protocols import DesignSpaceLike, SourceLike
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"
 
 #: A problem found in a designspace. The name the checks use internally is
 #: `CheckResult`; this is the same class, named for the reader.

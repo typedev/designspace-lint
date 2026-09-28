@@ -4,11 +4,13 @@
 
 A designspace can be perfectly valid and still produce a variable font nobody
 intended. A glyph missing from the master at the end of an axis quietly reverts
-to the default's shape past that point. A master with no kerning drags the
-family's kerning toward zero around its location. A `features.fea` that differs
-from the default's pushes the whole build onto another path, where `varLib`
-fails somewhere that has nothing to do with the cause. None of this is an
-error at build time; the font just comes out wrong.
+to the default's shape past that point. An avar2 mapping written at the default
+location is thrown away, and every other mapping shifts by what it would have
+moved. Two rules that swap one glyph over a shared region are settled by how
+their substitutions sort, not by the order you wrote them. A `features.fea`
+that differs from the default's pushes the whole build onto another path,
+where `varLib` fails somewhere that has nothing to do with the cause. None of
+this is an error at build time; the font just comes out wrong.
 
 This library reports those cases, and each report names the **consequence**,
 not only the discrepancy.
@@ -16,13 +18,16 @@ not only the discrepancy.
 ```console
 $ designspace-lint Family.designspace
 error 4.11 /eacute Weight 400 of 900: missing at Weight maximum (900); reverts to the default shape past 400
-error 5.0 Bold.ufo (Bold): no kerning: the family's kerning sags to 0 here
+error 1.18 mapping 27: avar2 mapping from the default location is dropped: YTOS 11 -> 10
 warn  4.2 /acute missing in 12 sources: anchor '_topacute' missing in 12 sources
 3 problem(s), 2 structural
 ```
 
 Exit code is `0` when clean, `1` when there are problems, `2` when the
-designspace cannot be read — so a build script can gate on it directly.
+designspace cannot be read — so a build script can gate on it directly. A
+master that cannot be opened is reported and the others are still checked, and
+a check that fails partway is reported as 0.1 rather than dropped, so a clean
+result means every check ran.
 
 ## Install
 
@@ -56,14 +61,14 @@ problems = lint(my_designspace)     # nothing is re-opened
 
 | Category | What it looks at |
 |---|---|
-| 0 File | the document can be read at all |
-| 1 Geometry | axis minimum/default/maximum, mappings, duplicate names and tags |
-| 2 Sources | locations, missing UFOs, duplicate locations, the default |
-| 3 Instances | instance locations and names |
+| 0 File | the document can be read at all, and every check could finish |
+| 1 Geometry | axis minimum/default/maximum, mappings, duplicate names and tags, discrete axis values, **avar2 mappings from the default** |
+| 2 Sources | locations, missing UFOs, duplicate locations as varLib compares them, the default, sources off a discrete axis' values |
+| 3 Instances | instance locations and names, unknown location labels, one name at two locations |
 | 4 Glyphs | master compatibility: contours, points, curve types, components, anchors, unicodes, contour direction, empty glyphs, and **how far along each axis a glyph actually reaches** |
 | 5 Kerning | kerning groups, masters with no kerning, a glyph in two groups of one side |
 | 6 Font Info | units per em, required fields, values that differ |
-| 7 Rules | designspace rules |
+| 7 Rules | rule conditions, rules that never apply, rule glyphs missing from the default master, **overlapping rules** |
 | 8 Features | whether the masters' `features.fea` keep the build on the variable path |
 | 9 Glyph Order | extra glyphs, and orders that break the per-master merge |
 
@@ -83,13 +88,30 @@ assumed, and several of them contradict what seems reasonable:
 - **Differing kerning pair sets are normal** and are not reported: a pair a
   master does not list resolves to its group value or to 0, which is exactly
   what its absence means in a UFO. A master with *no* kerning is reported,
-  because then every pair resolves to 0 there.
+  and what it does depends on ufo2ft: up to 3.8 every pair resolves to 0
+  there and the kerning sags toward it; since 3.9 the master is skipped and
+  the kerning interpolates across it.
 - Groups without pairs do not help — verified by building a variable font and
   reading the values back.
 - `ufo2ft` compiles one variable feature file from the default master **only**
   when every other master's `features.fea` matches it or all of them are
   empty. A mix of the two is not compatible either, and falling off that path
   is silent.
+- **Overlapping rules are not settled by declaration order.** varLib makes
+  one lookup per rule and numbers the lookups in sorted order of their
+  substitutions; in the overlap, the first to rewrite a glyph wins. Declared
+  `a → a.zzz` then `a → a.aaa`, the variable font shows `a.aaa`, while static
+  instances, which apply rules in declaration order, show `a.zzz`.
+- A rule with no `<conditionset>` never applies, and fontTools drops it. An
+  *empty* `<conditionset/>` is the spec's always-on rule.
+- **An avar2 mapping from the default location is discarded.** varLib keeps it
+  only as the base of the variation store it then throws away, and measures
+  every other mapping from it: with Weight 100/400/900, adding `400 → 650` to
+  `900 → 700` moves normalized 1.0 from 0.6 to 0.1 and leaves the default
+  where it was.
+- Duplicate masters are duplicates after the omitted axes are filled in:
+  `{Weight: 900}` and `{Weight: 900, Width: 100}` (the default) are one
+  location to varLib, which refuses them.
 - Sparse masters need no naming convention. Which masters a glyph may skip
   follows from the axes; which sources carry kerning, features and a glyph
   order of their own follows from whether they are layers.
