@@ -177,6 +177,7 @@ _TABLE = [
     (4, 16, "UNDERWEIGHT", "Contour thins out halfway", "interpolation", WARN, ("glyphName",), "interpolatable"),
     (4, 17, "KINK", "Contour kinks halfway", "interpolation", INFO, ("glyphName",), "interpolatable"),
     (4, 18, "UNCHECKED_NO_SOLVER", "Glyphs not compared point by point", "interpolation", INFO, (), "interpolatable"),
+    (4, 19, "COMPONENT_ORDER", "Components in a different order", "compatibility", ERR, ("glyphName",)),
     # --- 5 Kerning ---
     (5, 0, "NO_KERNING_IN_SOURCE", "Master without kerning", "kerning", WARN, ("sourceName",)),
     (5, 1, "NO_KERNING_IN_DEFAULT", "Default without kerning", "kerning", WARN, ("sourceName",)),

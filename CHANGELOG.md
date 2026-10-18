@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **4.19 COMPONENT_ORDER: the same components in a different order** (error).
+  varLib pairs a composite's components by position, so masters that use the
+  same bases in another order do not match. Checked with ufo2ft: a TrueType
+  build warns "incompatible masters; skipping" and the glyph never varies; a
+  CFF2 build decomposes the components and quietly morphs one into the other.
+  Until now this surfaced only as 4.9, which did not say why; 4.1 compares
+  which components are present and stayed silent. When the order is the only
+  difference, 4.19 replaces 4.9 for that glyph; with other differences too,
+  both are reported. `raw_data`: `glyphName`, `locationType: "groups"`,
+  `groups` (`order1`, `order2`, … → source labels, largest first) and
+  `orders` (the same keys → the base glyph names in drawing order).
+
+### Fixed
+
+- **4.1 missed a master without a component when another master used it
+  twice.** The repeat counted as a master that had it, so with three masters
+  `i dotaccent dotaccent` / `i dotaccent` / `i` reported nothing about the
+  third. `presentIn` no longer lists a master twice.
+
+### For consumers
+
+- New code `(4, 19)` `COMPONENT_ORDER` in `CODES`, group `compatibility`,
+  severity error, locator `glyphName`. Order-only glyphs that used to show as
+  4.9 now show as 4.19 instead.
+- 4.1 can now fire where it did not, and its `presentIn` has no duplicates.
+
 ## [0.7.0] - 2026-09-28
 
 The test suite now covers every code, and the names deprecated in 0.6.0 are

@@ -15,6 +15,7 @@ Checks (codes match designspaceProblems):
 - 4.8: Contour has wrong direction
 - 4.9: Incompatible constructions for glyph
 - 4.10: Different unicodes in glyph
+- 4.19: Same components in a different order
 
 Copyright 2024-2026 TypeDev
 Licensed under the Apache License, Version 2.0
@@ -23,7 +24,7 @@ Licensed under the Apache License, Version 2.0
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import TYPE_CHECKING, Iterator
 
 if TYPE_CHECKING:
@@ -33,6 +34,7 @@ from fontPens.digestPointPen import DigestPointStructurePen
 
 from ..model import (
     CATEGORY_GLYPHS,
+    SEVERITY_STRUCTURAL,
     AnchorDifference,
     CheckResult,
     GlyphProblemType,
@@ -58,6 +60,8 @@ DIFFERENT_UNICODES = 10  # different unicodes in glyph
 GLYPH_AXIS_SPAN_GAP = 11  # glyph does not reach one end of an axis
 GLYPH_EMPTY_IN_SOURCE = 12  # glyph empty in one master, drawn in others
 GLYPH_STATIC = 13  # drawn only in the default master, so it never varies
+# 14-18 are the --interpolatable checks (checkers/interpolation.py).
+COMPONENT_ORDER = 19  # same components, drawn in a different order
 
 # Minimum area threshold to consider direction meaningful
 MIN_AREA_THRESHOLD = 1000
@@ -136,6 +140,29 @@ def glyph_contour_stats(glyph) -> list[dict]:
                 types.append(point_type)
         stats.append({"on_curves": on_curves, "off_curves": off_curves, "types": tuple(types)})
     return stats
+
+
+class _ContoursOnlyPen:
+    """Pass a glyph's contours on to another point pen and drop its components.
+
+    With the components compared separately, as a sorted list, two masters
+    that differ only in component order give the same structure.
+    """
+
+    def __init__(self, pen):
+        self._pen = pen
+
+    def beginPath(self, identifier=None, **kwargs):
+        self._pen.beginPath()
+
+    def addPoint(self, pt, segmentType=None, smooth=False, name=None, **kwargs):
+        self._pen.addPoint(pt, segmentType=segmentType, smooth=smooth, name=name)
+
+    def endPath(self):
+        self._pen.endPath()
+
+    def addComponent(self, baseGlyphName, transformation, identifier=None, **kwargs):
+        pass
 
 
 class GlyphsChecker(BaseChecker):
@@ -355,6 +382,40 @@ class GlyphsChecker(BaseChecker):
                 },
             )
 
+    def _component_order_result(self, glyph_name, component_orders) -> CheckResult:
+        """4.19 for a glyph whose masters order the same components differently."""
+        ranked = sorted(component_orders.items(), key=lambda item: -len(item[1]))
+        groups = {f"order{i + 1}": sources for i, (_order, sources) in enumerate(ranked)}
+        orders = {f"order{i + 1}": list(order) for i, (order, _sources) in enumerate(ranked)}
+        shown = " vs ".join(", ".join(order) for order in orders.values())
+        return self._make_result(
+            code=COMPONENT_ORDER,
+            description=f"components in a different order ({shown}): the masters do not interpolate",
+            glyph_name=glyph_name,
+            location=format_groups_location(groups),
+            is_structural=False,
+            severity=SEVERITY_STRUCTURAL,
+            details=(
+                f"Glyph '{glyph_name}' has the same components in every master, but not in "
+                f"the same order: "
+                + "; ".join(
+                    f"{', '.join(order)} in {len(groups[key])} source(s)"
+                    for key, order in orders.items()
+                )
+                + ". varLib matches components by position: a TrueType build skips the "
+                "glyph's variations ('incompatible masters') and leaves it static, and a "
+                "CFF2 build, which decomposes the components, pairs each one's contours "
+                "with another's, so one component morphs into the other."
+            ),
+            problem_type=GlyphProblemType.COMPONENT_MISMATCH,
+            raw_data={
+                "glyphName": glyph_name,
+                "locationType": "groups",
+                "groups": groups,
+                "orders": orders,
+            },
+        )
+
     @staticmethod
     def _unopened_note(sub_doc, pairs) -> str:
         """Say so when the span was measured without some of the masters.
@@ -529,6 +590,8 @@ class GlyphsChecker(BaseChecker):
         component_sources: dict[str, list[str]] = defaultdict(list)  # base_glyph -> [sources]
         anchor_sources: dict[str, list[str]] = defaultdict(list)  # anchor_name -> [sources]
         unicode_sources: dict[tuple, list[str]] = defaultdict(list)  # unicodes -> [sources]
+        component_orders: dict[tuple, list[str]] = defaultdict(list)  # base names -> [sources]
+        unordered_patterns: set[tuple] = set()  # (contours digest, sorted base names)
         contour_stats: dict[tuple, list[dict]] = {}
         contour_directions: list[tuple[str, tuple]] = []  # (source_name, directions)
         all_source_names: list[str] = []  # Track all sources that have this glyph
@@ -560,6 +623,15 @@ class GlyphsChecker(BaseChecker):
 
             # Collect pattern with source names
             patterns[digest].append(source_name)
+
+            # The same structure with component order left out, so that 4.19
+            # can tell an order-only difference from a real one.
+            base_names = tuple(comp.baseGlyph for comp in glyph.components)
+            contours_pen = DigestPointStructurePen()
+            glyph.drawPoints(_ContoursOnlyPen(contours_pen))
+            unordered_patterns.add((contours_pen.getDigest(), tuple(sorted(base_names))))
+            if len(glyph) or base_names:
+                component_orders[base_names].append(source_name)
 
             # Count contours from the glyph, not from the digest: the
             # digest's shape is fontPens' business and it changed under us.
@@ -618,8 +690,10 @@ class GlyphsChecker(BaseChecker):
                 )
             )
 
-        # 4.1: Different components
+        # 4.1: Different components. A base used twice in one master lists
+        # that master twice, which must not make up for a master without it.
         for base_glyph, present_in in component_sources.items():
+            present_in = list(dict.fromkeys(present_in))
             if len(present_in) < num_sources:
                 # Find sources missing this component
                 missing_in = [s for s in all_source_names if s not in present_in]
@@ -677,8 +751,18 @@ class GlyphsChecker(BaseChecker):
                     )
                 )
 
-        # 4.9: Incompatible glyph + detailed checks (4.3, 4.4, 4.5)
-        if len(patterns) > 1:
+        # 4.19: the same components in a different order. varLib pairs the
+        # components of a composite by index, so the masters do not match.
+        order_differs = len(component_orders) > 1 and (
+            len({tuple(sorted(Counter(order).items())) for order in component_orders}) == 1
+        )
+        if order_differs:
+            results.append(self._component_order_result(glyph_name, component_orders))
+
+        # 4.9: Incompatible glyph + detailed checks (4.3, 4.4, 4.5). When the
+        # order of the components is all that differs, 4.19 has said it.
+        order_only = order_differs and len(unordered_patterns) == 1
+        if len(patterns) > 1 and not order_only:
             # Build groups with pattern labels (pattern1, pattern2, etc.)
             pattern_groups = {
                 f"pattern{i + 1}": sources
