@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0] - 2026-10-18
+
+A check for composites whose masters order their components differently.
 
 ### Added
 
@@ -34,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   severity error, locator `glyphName`. Order-only glyphs that used to show as
   4.9 now show as 4.19 instead.
 - 4.1 can now fire where it did not, and its `presentIn` has no duplicates.
+- No other code changed its number, severity or meaning.
+- To upgrade a uv lock whose index cache predates the release:
+  `uv lock --upgrade-package designspace-lint --refresh`.
 
 ## [0.7.0] - 2026-09-28
 
