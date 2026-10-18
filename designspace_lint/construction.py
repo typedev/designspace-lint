@@ -16,17 +16,20 @@ A component's role comes from its base glyph's unicode in the font:
 
 - the base glyph's own first unicode; failing that, the unicode of the glyph
   named like it without the suffix (everything from the first ".");
-- general category Mn, Me, Sk or Lm is a mark (`ACCENT`), anything else a
-  `BASE`, and no unicode at all `UNKNOWN`;
+- a letter (general category Lu, Ll, Lt or Lo) is a `BASE`; everything else
+  is a mark (`ACCENT`): Mn, Me, Sk, Lm, but also So, Co, Po, Nd, and a glyph
+  with no unicode at all. Fonts encode marks oddly -- a hook as U+2440 OCR
+  HOOK, a comma accent in the private use area -- and a letter is the one
+  thing that is reliably a base;
 - a name with "_" and no unicode of its own (after the suffix is stripped) is
-  a ligature of its parts: all marks makes it a mark, otherwise it weighs as
-  many bases as it has. A part with no unicode leaves the component unknown.
+  a ligature of its parts: it weighs as many bases as it has letter parts, and
+  with none it is a mark. A part with no unicode is not a letter.
 
-The rule applies when a glyph has a mark. Bases go first, heaviest first, then
-the marks by the bottom of their placed outline, lowest first; ties keep
-their current order. Unknown components count as marks when the glyph has a
-known base; otherwise nothing is reordered. Every unknown component, and a
-mark with no outline to measure, comes back as a note.
+The rule applies when a glyph has both a base and a mark. Bases go first,
+heaviest first, then the marks by the bottom of their placed outline, lowest
+first; ties keep their current order. A component with no unicode is ordered
+as a mark and comes back as a note, as does a mark with no outline to
+measure, which leaves the order as it is.
 """
 
 from __future__ import annotations
@@ -39,9 +42,13 @@ from fontTools.pens.transformPen import TransformPen
 
 ACCENT = "accent"
 BASE = "base"
+#: No longer returned: a component with no unicode is a mark. Kept for 0.9.x.
 UNKNOWN = "unknown"
 
-#: Unicode general categories that make a component a mark.
+#: Unicode general categories that make a component a base; any other is a mark.
+BASE_CATEGORIES = frozenset({"Lu", "Ll", "Lt", "Lo"})
+
+#: The mark categories of 0.8.1, no longer used. Kept for 0.9.x.
 ACCENT_CATEGORIES = frozenset({"Mn", "Me", "Sk", "Lm"})
 
 # Reasons given in the notes.
@@ -59,18 +66,18 @@ def _unicode_of(font, name: str) -> int | None:
 
 
 def _kind(codepoint: int) -> str:
-    return ACCENT if unicodedata.category(chr(codepoint)) in ACCENT_CATEGORIES else BASE
+    return BASE if unicodedata.category(chr(codepoint)) in BASE_CATEGORIES else ACCENT
 
 
 def component_role(font, base_name: str) -> tuple[str, int, str]:
     """The role of a component whose base glyph is `base_name`.
 
-    Returns ``(kind, weight, reason)``: `kind` is `ACCENT`, `BASE` or
-    `UNKNOWN`; `weight` is how many bases it counts as (0 for a mark); `reason`
-    says why it is unknown, and is empty otherwise.
+    Returns ``(kind, weight, reason)``: `kind` is `BASE` or `ACCENT`;
+    `weight` is how many bases it counts as (0 for a mark); `reason` says why
+    no unicode was found for it (or a part of it), and is empty otherwise.
     """
     if base_name not in font:
-        return UNKNOWN, 0, MISSING_BASE
+        return ACCENT, 0, MISSING_BASE
     codepoint = _unicode_of(font, base_name)
     stem = base_name.split(".", 1)[0]
     if codepoint is None:
@@ -81,13 +88,16 @@ def component_role(font, base_name: str) -> tuple[str, int, str]:
     if "_" in stem:
         parts = [part for part in stem.split("_") if part]
         weight = 0
+        missing = []
         for part in parts:
             part_codepoint = _unicode_of(font, part)
             if part_codepoint is None:
-                return UNKNOWN, 0, f"{LIGATURE_PART_NO_UNICODE} ({part})"
-            weight += _kind(part_codepoint) == BASE
-        return (ACCENT, 0, "") if weight == 0 else (BASE, weight, "")
-    return UNKNOWN, 0, NO_UNICODE
+                missing.append(part)
+            elif _kind(part_codepoint) == BASE:
+                weight += 1
+        reason = f"{LIGATURE_PART_NO_UNICODE} ({', '.join(missing)})" if missing else ""
+        return (BASE, weight, reason) if weight else (ACCENT, 0, reason)
+    return ACCENT, 0, NO_UNICODE
 
 
 class _Drawable:
@@ -139,8 +149,8 @@ def canonical_component_order(glyph, font, layer=None) -> tuple[list[int], list[
     Returns:
         ``(order, notes)``: `order` lists indexes into `glyph.components`, in
         the expected order -- ``list(range(n))`` when nothing should move;
-        `notes` lists ``(component index, reason)`` for every component whose
-        role is unknown, and for marks that could not be measured.
+        `notes` lists ``(component index, reason)`` for every component with
+        no unicode to go by, and for marks that could not be measured.
     """
     if layer is None:
         layer = font
@@ -150,15 +160,14 @@ def canonical_component_order(glyph, font, layer=None) -> tuple[list[int], list[
         return identity, []
 
     roles = [component_role(font, c.baseGlyph) for c in components]
-    notes = [(i, reason) for i, (kind, _w, reason) in enumerate(roles) if kind == UNKNOWN]
+    notes = [(i, reason) for i, (_kind, _w, reason) in enumerate(roles) if reason]
     has_base = any(kind == BASE for kind, _w, _r in roles)
     has_accent = any(kind == ACCENT for kind, _w, _r in roles)
 
-    if not has_base or (not has_accent and not notes):
-        # Nothing known to put first, or no mark to put after it.
+    if not (has_base and has_accent):
+        # No letter to put first, or no mark to put after it.
         return identity, notes
 
-    # With a known base present, unknown components count as marks.
     keys = []
     for i, (kind, weight, _reason) in enumerate(roles):
         if kind == BASE:

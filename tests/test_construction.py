@@ -22,7 +22,6 @@ from designspace_lint.construction import (
     MISSING_BASE,
     NO_OUTLINE,
     NO_UNICODE,
-    UNKNOWN,
 )
 from fakes import FakeComponent, FakeGlyph, FakeLayer, build_designspace
 
@@ -49,7 +48,14 @@ BASES = {
     "tilde": _box("tilde", 550, 650, 0x2DC),  # Sk
     "circumflex_tilde.uc": _box("circumflex_tilde.uc", 750, 1000),
     "e_acute": _box("e_acute", 0, 700),
-    "circumflex_hook": _box("circumflex_hook", 550, 900),  # hook: no glyph
+    "hook": _box("hook", 550, 700, 0x2440),  # OCR HOOK, So -- as fonts do encode it
+    "hook.uc": _box("hook.uc", 750, 900),
+    "commaaccent": _box("commaaccent", -250, -100, 0xF6C3),  # private use, Co
+    "uni01A0": _box("uni01A0", 0, 700, 0x1A0),  # O with horn
+    "circumflex_hook": _box("circumflex_hook", 550, 900),
+    "circumflex_horn": _box("circumflex_horn", 550, 900),  # no "horn" glyph
+    "one": _box("one", 0, 700, 0x31),  # Nd
+    "j": _box("j", -200, 500, 0x6A),
     "underdot": _box("underdot", -200, -100),  # no unicode
     "hornA": _box("hornA", 0, 700),  # no unicode
     "blank": FakeGlyph("blank", unicodes=[0x2D9]),  # a mark with no outline
@@ -92,10 +98,16 @@ def test_roles_come_from_unicode_categories_suffixes_and_ligature_parts():
     assert component_role(font, "circumflex_tilde.uc") == (ACCENT, 0, "")
     assert component_role(font, "f_f") == (BASE, 2, "")
     assert component_role(font, "e_acute") == (BASE, 1, "")
-    assert component_role(font, "underdot") == (UNKNOWN, 0, NO_UNICODE)
-    assert component_role(font, "nothere") == (UNKNOWN, 0, MISSING_BASE)
-    kind, _weight, reason = component_role(font, "circumflex_hook")
-    assert kind == UNKNOWN and "hook" in reason
+    # Anything that is not a letter is a mark, however the font encodes it.
+    assert component_role(font, "hook.uc") == (ACCENT, 0, "")  # So, via "hook"
+    assert component_role(font, "commaaccent") == (ACCENT, 0, "")  # Co
+    assert component_role(font, "one") == (ACCENT, 0, "")  # Nd
+    assert component_role(font, "circumflex_hook") == (ACCENT, 0, "")
+    # No unicode: a mark too, with the reason kept for the note.
+    assert component_role(font, "underdot") == (ACCENT, 0, NO_UNICODE)
+    assert component_role(font, "nothere") == (ACCENT, 0, MISSING_BASE)
+    kind, weight, reason = component_role(font, "circumflex_horn")
+    assert (kind, weight) == (ACCENT, 0) and "horn" in reason
 
 
 # --- the order ---
@@ -116,25 +128,31 @@ def test_heavier_ligatures_go_first_and_ties_keep_their_order():
     assert _order("C", "e", "acute")[0] == ["C", "e", "acute"]
 
 
-def test_no_mark_means_nothing_to_order():
+def test_no_mark_or_no_letter_means_nothing_to_order():
     assert _order("period", "period") == (["period", "period"], [])
     assert _order("f", "i") == (["f", "i"], [])
+    assert _order("j", "i") == (["j", "i"], [])  # ij: only letters
 
 
-def test_an_unknown_component_with_a_known_base_is_ordered_as_a_mark():
+def test_a_hook_encoded_as_a_symbol_goes_after_its_letter():
+    assert _order("hook.uc", "uni01A0") == (["uni01A0", "hook.uc"], [])
+
+
+def test_a_digit_goes_after_a_letter():
+    assert _order("one", "C")[0] == ["C", "one"]
+
+
+def test_a_component_with_no_unicode_is_ordered_as_a_mark_and_noted():
     order, notes = _order("e", "circumflex", "underdot")
     assert order == ["e", "underdot", "circumflex"]
     assert notes == [("underdot", NO_UNICODE)]
 
 
-def test_all_unknown_stays_as_it_is_and_says_so():
+def test_without_a_letter_nothing_moves_but_the_notes_stay():
     assert _order("underdot", "hornA") == (
         ["underdot", "hornA"],
         [("underdot", NO_UNICODE), ("hornA", NO_UNICODE)],
     )
-
-
-def test_unknown_with_only_marks_stays_as_it_is():
     order, notes = _order("acute", "underdot")
     assert order == ["acute", "underdot"]
     assert notes == [("underdot", NO_UNICODE)]

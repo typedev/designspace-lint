@@ -182,7 +182,7 @@ _TABLE = [
     (4, 18, "UNCHECKED_NO_SOLVER", "Glyphs not compared point by point", "interpolation", INFO, (), "interpolatable"),
     (4, 19, "COMPONENT_ORDER", "Components in a different order", "compatibility", ERR, ("glyphName",)),
     (4, 20, "COMPONENT_ORDER_CANONICAL", "Components out of the house order", "construction", WARN, ("glyphName",), "construction"),
-    (4, 21, "COMPONENT_ROLE_UNKNOWN", "Component neither base nor mark", "construction", INFO, ("glyphName",), "construction"),
+    (4, 21, "COMPONENT_ROLE_UNKNOWN", "Component placed without a unicode", "construction", INFO, ("glyphName",), "construction"),
     # --- 5 Kerning ---
     (5, 0, "NO_KERNING_IN_SOURCE", "Master without kerning", "kerning", WARN, ("sourceName",)),
     (5, 1, "NO_KERNING_IN_DEFAULT", "Default without kerning", "kerning", WARN, ("sourceName",)),

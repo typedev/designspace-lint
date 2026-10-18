@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **`--construction`: a component is a base when its unicode is a letter**
+  (Lu, Ll, Lt, Lo), and a mark otherwise. Fonts encode marks in odd places --
+  a hook as U+2440 OCR HOOK (So), a comma accent in the private use area (Co)
+  -- and 0.8.1 took those for bases, so a glyph such as `uni1EDE` (hook.uc +
+  O-horn) was never reordered. Digits (Nd) and components with no unicode are
+  marks too; a "_" ligature weighs as many bases as it has letter parts. The
+  rule applies when a glyph has both a letter and a mark.
+- 4.21 now notes the components ordered as marks for want of a unicode (and
+  marks with no outline to measure); it no longer means "left unordered".
+  Its title is now "Component placed without a unicode".
+
+### Deprecated
+
+- `construction.UNKNOWN` (no longer returned by `component_role`) and
+  `construction.ACCENT_CATEGORIES` (replaced by `BASE_CATEGORIES`). Both go
+  in the next minor release.
+
+### For consumers
+
+- `canonical_component_order` and `component_role` keep their signatures;
+  `component_role` returns only `BASE` or `ACCENT` now, with the reason still
+  set when no unicode was found. Reason strings are unchanged.
+- `raw_data` of 4.20 and 4.21 is unchanged.
+
 ## [0.8.1] - 2026-10-18
 
 An opt-in check of how composites are built.

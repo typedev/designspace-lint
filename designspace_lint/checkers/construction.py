@@ -11,7 +11,7 @@ it too; this phase runs it over every master.
 
 Codes (category 4):
 - 4.20: components out of the expected order (warning)
-- 4.21: components whose role the rule cannot tell (information)
+- 4.21: components with no unicode, ordered as marks (information)
 
 Only on request (`--construction`).
 """
@@ -131,12 +131,12 @@ class ConstructionChecker(GlyphsChecker):
         shown = ", ".join(f"{c['baseGlyph']} ({c['reason']})" for c in components)
         return self._make_result(
             code=COMPONENT_ROLE_UNKNOWN,
-            description=f"component role unknown: {shown}",
+            description=f"component order not from a unicode: {shown}",
             glyph_name=glyph_name,
             details=(
-                f"Glyph '{glyph_name}': the component order rule cannot tell whether "
-                f"{shown} is a base or a mark. With a known base in the glyph an unknown "
-                f"component is ordered as a mark; otherwise the order is left as it is."
+                f"Glyph '{glyph_name}': {shown}. A component with no unicode to go by is "
+                f"not a letter, so the order rule puts it with the marks; a mark with no "
+                f"outline to measure leaves the order as it is."
             ),
             severity=SEVERITY_INFO,
             problem_type=GlyphProblemType.COMPONENT_MISMATCH,

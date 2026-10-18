@@ -55,9 +55,10 @@ Not a build problem: ufo2ft takes a composite's components in any order, as
 long as the masters agree (4.19). Some foundries want them in one order
 anyway: bases first, then the marks from the bottom up. `--construction` (or
 `lint(..., construction=True)`) reports composites in another order (4.20) and
-components it cannot place (4.21). Whether a component is a mark comes from
-its base glyph's unicode category (Mn, Me, Sk, Lm), following a ".suffix" to
-the plain name and a "_" ligature to its parts. The rule is
+components placed without a unicode to go by (4.21). A component is a base
+when its base glyph's unicode is a letter (Lu, Ll, Lt, Lo) and a mark
+otherwise -- symbols, private use and unencoded glyphs included -- following a
+".suffix" to the plain name and a "_" ligature to its parts. The rule is
 `designspace_lint.canonical_component_order(glyph, font)`, for an editor to
 apply as a fix.
 
