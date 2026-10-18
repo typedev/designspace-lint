@@ -21,7 +21,7 @@ import pytest
 import designspace_lint
 from designspace_lint import CODES, lint
 from designspace_lint.codes import GROUPS
-from designspace_lint.engine import INTERPOLATION_PHASE, PHASES
+from designspace_lint.engine import CONSTRUCTION_PHASE, INTERPOLATION_PHASE, PHASES
 from designspace_lint.model import SEVERITY_DESIGN, SEVERITY_INFO, SEVERITY_STRUCTURAL
 from fakes import FakeGlyph, build_designspace
 
@@ -38,6 +38,7 @@ CODE_MODULES = {
     "checkers/instances.py": 3,
     "checkers/glyphs.py": 4,
     "checkers/interpolation.py": 4,
+    "checkers/construction.py": 4,
     "checkers/kerning.py": 5,
     "checkers/fontinfo.py": 6,
     "checkers/rules.py": 7,
@@ -94,7 +95,7 @@ def test_retired_means_never_reported():
 
 
 def test_catalogue_entries_are_well_formed():
-    phases = {p[0] for p in PHASES} | {INTERPOLATION_PHASE[0]}
+    phases = {p[0] for p in PHASES} | {INTERPOLATION_PHASE[0], CONSTRUCTION_PHASE[0]}
     for (category, code), info in CODES.items():
         assert (info.category, info.code) == (category, code)
         assert info.group in GROUPS and info.group_title == GROUPS[info.group]
@@ -102,6 +103,7 @@ def test_catalogue_entries_are_well_formed():
         assert info.default_severity == info.severities[0]
         assert set(info.severities) <= {SEVERITY_STRUCTURAL, SEVERITY_DESIGN, SEVERITY_INFO}
         assert info.interpolatable_only == (info.phase == "interpolation")
+        assert info.construction_only == (info.phase == "construction")
 
 
 @pytest.mark.skipif(not PROBES.is_dir(), reason="the audit probes ship with the repository only")
@@ -112,7 +114,7 @@ def test_the_audit_probes_produce_only_catalogued_findings():
         seen = set()
         for path in sorted(PROBES.rglob("*.designspace")):
             try:
-                results = designspace_lint.lint_path(path, interpolatable=True)
+                results = designspace_lint.lint_path(path, interpolatable=True, construction=True)
             except Exception:
                 continue  # unreadable on purpose: that is the probe
             seen |= {(r.category, r.code) for r in results}

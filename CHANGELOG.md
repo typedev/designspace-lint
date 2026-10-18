@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`--construction`: the house order of composites (opt-in).** A convention,
+  not a build consequence, so it runs only when asked for
+  (`lint(..., construction=True)`). Bases go first, heaviest first; then the
+  marks from the bottom of their placed outline up. A component is a mark when
+  its base glyph's unicode (or, failing that, its unsuffixed name's) is in
+  category Mn, Me, Sk or Lm; a "_" name without a unicode is judged by its
+  parts. Unknown components are ordered as marks when the glyph has a known
+  base, and left alone otherwise.
+  - **4.20 COMPONENT_ORDER_CANONICAL** (warning): masters whose components are
+    in another order. `raw_data`: `glyphName`, `locationType: "groups"`,
+    `groups` (`order1`, … → source labels, largest first), `current` and
+    `expected` (same keys → base glyph names), `expectedDiffers` (true when
+    the marks stack differently in different masters, so their expected
+    orders differ).
+  - **4.21 COMPONENT_ROLE_UNKNOWN** (information): components the rule cannot
+    place. `raw_data`: `glyphName`, `components` (list of `index`,
+    `baseGlyph`, `reason`, `sources`).
+- **`canonical_component_order(glyph, font, layer=None)`** and
+  **`component_role(font, base_name)`**, public, in
+  `designspace_lint.construction`: the rule itself, for an editor's fix.
+
+### For consumers
+
+- New codes `(4, 20)` and `(4, 21)` in group `construction` ("Composite
+  construction"), phase `construction`, locator `glyphName`. Both are
+  reported only with `construction=True`; `CodeInfo.construction_only` says
+  so, like `interpolatable_only`.
+- New `lint`/`iter_lint`/`lint_path`/`Linter` keyword `construction=False`,
+  and `"construction"` is accepted by `phases=` and honours `glyphs=` when
+  the phase is on.
+- No existing code changed its number, severity or meaning.
+
 ## [0.8.0] - 2026-10-18
 
 A check for composites whose masters order their components differently.

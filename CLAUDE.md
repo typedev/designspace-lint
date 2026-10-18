@@ -37,6 +37,7 @@ pytest -q
 - **`(category, code)` pairs are a public contract.** Never renumber or reuse a code; new checks get new numbers. Codes 4.0–4.10 match designspaceProblems (LettError) and must keep that meaning.
 - **No toolkit or host-app imports** (`gi`, `gtk`, `adw`, `font_rover`) anywhere in the package, even lazy or under `TYPE_CHECKING` — enforced by `tests/test_designspace_lint_isolation.py`.
 - **Rules must match what fontTools/ufo2ft actually do**, verified rather than assumed. Don't encode naming conventions (e.g. "sparse" in a source name) as rules. Differing kerning pair sets are normal and not reported; a master with *no* kerning is. A designspace 5 source may omit axes it is default on.
+- The one exception is an **opt-in** phase that says it checks a convention, not a build consequence: `Linter(construction=True)` (`--construction`) adds the `construction` phase (4.20/4.21, `checkers/construction.py`), the composite component order Font-Rover's users asked for. Its rule lives in the public `construction.py` (`canonical_component_order`), which Font-Rover's fix calls, so it is implemented as specified and gaps are reported back rather than guessed.
 - Don't depend on other libraries' internal formats (e.g. fontPens digest tuple shapes); read glyph data directly.
 
 ## Tests

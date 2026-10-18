@@ -66,6 +66,10 @@ PHASES = [
 # the rest of the run, so it runs only when asked for.
 INTERPOLATION_PHASE = ("interpolation", "Checking point correspondence...")
 
+# Opt-in: the house order of a composite's components (4.20, 4.21). A
+# convention, not a build consequence, so it runs only when asked for.
+CONSTRUCTION_PHASE = ("construction", "Checking composite construction...")
+
 # 0.1: a check raised and the rest of its phase went unchecked. The file
 # category is where problems with the run itself live.
 PHASE_FAILED = 1
@@ -80,7 +84,7 @@ DOCUMENT_PHASES = ("file", "geometry", "labels")
 ALWAYS_RUN = ("file", "geometry")
 
 # The phases a `glyphs=` restriction applies to.
-GLYPH_PHASES = ("glyphs", "interpolation")
+GLYPH_PHASES = ("glyphs", "interpolation", "construction")
 
 
 def phase_failed(phase_id: str, exc: Exception, where: str = "") -> CheckResult:
@@ -119,6 +123,7 @@ class Linter:
         path: Path | None = None,
         cancel: Any = None,
         interpolatable: bool = False,
+        construction: bool = False,
         phases: "list[str] | None" = None,
         glyphs: "list[str] | None" = None,
     ):
@@ -133,11 +138,14 @@ class Linter:
                 this in a thread can stop it.
             interpolatable: also run the point-correspondence phase (4.14 to
                 4.18), right after the glyph checks.
+            construction: also check that composites list their components
+                bases first, then marks from the bottom up (4.20, 4.21).
             phases: run only these phases, by id (see `PHASES`); "file" and
                 "geometry" always run. The whole-document source and instance
                 checks run with the "sources" and "instances" phases.
             glyphs: check only these glyphs in the glyph phases ("glyphs",
-                "interpolation"). The engine still splits by discrete axes.
+                "interpolation", "construction"). The engine still splits by
+                discrete axes.
         """
         self._entry = designspace
         self._path = path or (designspace.path if designspace else None)
@@ -148,6 +156,10 @@ class Linter:
         if interpolatable:
             glyphs_at = [p[0] for p in self._phases].index("glyphs")
             self._phases.insert(glyphs_at + 1, INTERPOLATION_PHASE)
+        if construction:
+            after = "interpolation" if interpolatable else "glyphs"
+            at = [p[0] for p in self._phases].index(after)
+            self._phases.insert(at + 1, CONSTRUCTION_PHASE)
 
         self._selected: set[str] | None = None
         if phases is not None:
@@ -164,6 +176,10 @@ class Linter:
             from .checkers.interpolation import InterpolationChecker
 
             self._checkers["interpolation"] = InterpolationChecker
+        if construction:
+            from .checkers.construction import ConstructionChecker
+
+            self._checkers["construction"] = ConstructionChecker
 
     @property
     def _cancelled(self) -> bool:

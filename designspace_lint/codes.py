@@ -58,6 +58,8 @@ class CodeInfo:
     severities: tuple[int, ...] = ()
     #: Reported only by `lint(..., interpolatable=True)`.
     interpolatable_only: bool = False
+    #: Reported only by `lint(..., construction=True)`.
+    construction_only: bool = False
     #: `raw_data` keys guaranteed on every finding with this code.
     locators: tuple[str, ...] = ()
     #: Declared but no longer reported; the number stays taken.
@@ -74,6 +76,7 @@ GROUPS = {
     "compatibility": "Glyph compatibility",
     "coverage": "Glyph coverage",
     "interpolation": "Point correspondence",
+    "construction": "Composite construction",
     "kerning": "Kerning",
     "fontinfo": "Font info",
     "rules": "Rules",
@@ -178,6 +181,8 @@ _TABLE = [
     (4, 17, "KINK", "Contour kinks halfway", "interpolation", INFO, ("glyphName",), "interpolatable"),
     (4, 18, "UNCHECKED_NO_SOLVER", "Glyphs not compared point by point", "interpolation", INFO, (), "interpolatable"),
     (4, 19, "COMPONENT_ORDER", "Components in a different order", "compatibility", ERR, ("glyphName",)),
+    (4, 20, "COMPONENT_ORDER_CANONICAL", "Components out of the house order", "construction", WARN, ("glyphName",), "construction"),
+    (4, 21, "COMPONENT_ROLE_UNKNOWN", "Component neither base nor mark", "construction", INFO, ("glyphName",), "construction"),
     # --- 5 Kerning ---
     (5, 0, "NO_KERNING_IN_SOURCE", "Master without kerning", "kerning", WARN, ("sourceName",)),
     (5, 1, "NO_KERNING_IN_DEFAULT", "Default without kerning", "kerning", WARN, ("sourceName",)),
@@ -238,9 +243,16 @@ def _build() -> dict[tuple[int, int], CodeInfo]:
             group=group,
             group_title=GROUPS[group],
             default_severity=severities[0],
-            phase="interpolation" if "interpolatable" in flags else _PHASE[category],
+            phase=(
+                "interpolation"
+                if "interpolatable" in flags
+                else "construction"
+                if "construction" in flags
+                else _PHASE[category]
+            ),
             severities=severities,
             interpolatable_only="interpolatable" in flags,
+            construction_only="construction" in flags,
             locators=tuple(locators),
             retired="retired" in flags,
         )

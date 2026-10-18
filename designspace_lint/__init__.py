@@ -59,6 +59,7 @@ from .model import (
 )
 from .checkers.base import label_for_source
 from .codes import CODES, CodeInfo, code_info
+from .construction import canonical_component_order, component_role
 from .glyph_order import dedupe_glyph_order, raw_glyph_order
 from .model import effective_severity
 from .protocols import DesignSpaceLike, SourceLike
@@ -82,6 +83,7 @@ def iter_lint(
     on_progress=None,
     cancel=None,
     interpolatable=False,
+    construction=False,
     phases=None,
     glyphs=None,
 ):
@@ -96,6 +98,9 @@ def iter_lint(
         interpolatable: also compare the masters point by point with
             fontTools' ``varLib.interpolatable`` (4.14-4.18). Slower; install
             ``designspace-lint[interpolatable]`` for glyphs of 7+ contours.
+        construction: also check the house order of composites' components:
+            bases first, then marks from the bottom up (4.20, 4.21). A
+            convention, not a build problem; see :mod:`designspace_lint.construction`.
         phases: run only these phases (ids from :data:`PHASES`); "file" and
             "geometry" always run.
         glyphs: check only these glyphs in the glyph phases.
@@ -107,6 +112,7 @@ def iter_lint(
         designspace=designspace,
         cancel=cancel,
         interpolatable=interpolatable,
+        construction=construction,
         phases=phases,
         glyphs=glyphs,
     )
@@ -120,6 +126,7 @@ def lint(
     on_progress=None,
     cancel=None,
     interpolatable=False,
+    construction=False,
     phases=None,
     glyphs=None,
 ) -> list[CheckResult]:
@@ -131,6 +138,7 @@ def lint(
             on_progress=on_progress,
             cancel=cancel,
             interpolatable=interpolatable,
+            construction=construction,
             phases=phases,
             glyphs=glyphs,
         )
@@ -144,6 +152,7 @@ def lint_path(
     on_progress=None,
     cancel=None,
     interpolatable=False,
+    construction=False,
     phases=None,
     glyphs=None,
 ) -> list[CheckResult]:
@@ -158,6 +167,7 @@ def lint_path(
         on_progress=on_progress,
         cancel=cancel,
         interpolatable=interpolatable,
+        construction=construction,
         phases=phases,
         glyphs=glyphs,
     )
@@ -196,6 +206,8 @@ __all__ = [
     "label_for_source",
     "raw_glyph_order",
     "dedupe_glyph_order",
+    "canonical_component_order",
+    "component_role",
     "undeclared_axis_dimensions",
     "undeclared_axis_dimensions_from_string",
     "StrayDimension",

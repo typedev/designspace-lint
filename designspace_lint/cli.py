@@ -52,12 +52,19 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Also compare masters point by point (slower; start points, contour order)",
     )
+    parser.add_argument(
+        "--construction",
+        action="store_true",
+        help="Also check that composites list bases first, then marks bottom up",
+    )
     args = parser.parse_args(argv)
 
     from . import lint_path
 
     try:
-        problems = lint_path(args.path, interpolatable=args.interpolatable)
+        problems = lint_path(
+            args.path, interpolatable=args.interpolatable, construction=args.construction
+        )
     except FileNotFoundError as exc:
         print(f"designspace-lint: {exc}", file=sys.stderr)
         return 2

@@ -49,6 +49,18 @@ thins out or kinks halfway. varLib builds all of it without a word.
 more than six contours need an assignment solver; without the extra they are
 counted and reported once (4.18) instead of checked.
 
+### House order of composites: `--construction`
+
+Not a build problem: ufo2ft takes a composite's components in any order, as
+long as the masters agree (4.19). Some foundries want them in one order
+anyway: bases first, then the marks from the bottom up. `--construction` (or
+`lint(..., construction=True)`) reports composites in another order (4.20) and
+components it cannot place (4.21). Whether a component is a mark comes from
+its base glyph's unicode category (Mn, Me, Sk, Lm), following a ".suffix" to
+the plain name and a "_" ligature to its parts. The rule is
+`designspace_lint.canonical_component_order(glyph, font)`, for an editor to
+apply as a fix.
+
 ## Use it from Python
 
 ```python
