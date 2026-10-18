@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.1] - 2026-10-18
+
+An opt-in check of how composites are built.
 
 ### Added
 
@@ -40,6 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `"construction"` is accepted by `phases=` and honours `glyphs=` when
   the phase is on.
 - No existing code changed its number, severity or meaning.
+- To upgrade a uv lock whose index cache predates the release:
+  `uv lock --upgrade-package designspace-lint --refresh`.
 
 ## [0.8.0] - 2026-10-18
 
