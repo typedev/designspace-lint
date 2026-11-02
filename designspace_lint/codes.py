@@ -23,7 +23,8 @@ thing a finding is about without parsing its `location` string. The vocabulary
 is fixed: `instanceName` (the instance's `name`), `instanceIndex` (its position
 in the document), `instanceIndices` (several of them, for a finding about a
 group), `sourceName`, `layerName`, `axisName`, `ruleName`, `glyphName`,
-`mappingIndex`. A code with no locators promises none yet; they
+`mappingIndex`, and for the unicode checks `glyphNames`, `codepoint`,
+`codepoints`. A code with no locators promises none yet; they
 are added as checks are revisited, never removed.
 """
 
@@ -77,6 +78,7 @@ GROUPS = {
     "coverage": "Glyph coverage",
     "interpolation": "Point correspondence",
     "construction": "Composite construction",
+    "unicodes": "Unicodes",
     "kerning": "Kerning",
     "fontinfo": "Font info",
     "rules": "Rules",
@@ -183,6 +185,8 @@ _TABLE = [
     (4, 19, "COMPONENT_ORDER", "Components in a different order", "compatibility", ERR, ("glyphName",)),
     (4, 20, "COMPONENT_ORDER_CANONICAL", "Components out of the house order", "construction", WARN, ("glyphName",), "construction"),
     (4, 21, "COMPONENT_ROLE_UNKNOWN", "Component placed without a unicode", "construction", INFO, ("glyphName",), "construction"),
+    (4, 22, "DUPLICATE_UNICODE", "Codepoint given to several glyphs", "unicodes", ERR, ("glyphName", "glyphNames", "codepoint", "sourceName", "layerName")),
+    (4, 23, "MULTIPLE_UNICODES", "Glyph with several codepoints", "unicodes", INFO, ("glyphName", "codepoints", "sourceName", "layerName")),
     # --- 5 Kerning ---
     (5, 0, "NO_KERNING_IN_SOURCE", "Master without kerning", "kerning", WARN, ("sourceName",)),
     (5, 1, "NO_KERNING_IN_DEFAULT", "Default without kerning", "kerning", WARN, ("sourceName",)),

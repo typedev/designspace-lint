@@ -16,6 +16,8 @@ Checks (codes match designspaceProblems):
 - 4.9: Incompatible constructions for glyph
 - 4.10: Different unicodes in glyph
 - 4.19: Same components in a different order
+- 4.22, 4.23: one codepoint on several glyphs, several on one glyph, within a
+  master (checkers/unicodes.py)
 
 Copyright 2024-2026 TypeDev
 Licensed under the Apache License, Version 2.0
@@ -32,6 +34,7 @@ if TYPE_CHECKING:
 
 from fontPens.digestPointPen import DigestPointStructurePen
 
+from ..glyph_order import safe_glyph_order
 from ..model import (
     CATEGORY_GLYPHS,
     SEVERITY_STRUCTURAL,
@@ -40,6 +43,7 @@ from ..model import (
     GlyphProblemType,
 )
 from .base import BaseChecker
+from .unicodes import designspace_skip_export, unicode_findings
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +66,8 @@ GLYPH_EMPTY_IN_SOURCE = 12  # glyph empty in one master, drawn in others
 GLYPH_STATIC = 13  # drawn only in the default master, so it never varies
 # 14-18 are the --interpolatable checks (checkers/interpolation.py).
 COMPONENT_ORDER = 19  # same components, drawn in a different order
+# 20-21 are the --construction checks (checkers/construction.py), 22-23 the
+# unicode checks within one master (checkers/unicodes.py).
 
 # Minimum area threshold to consider direction meaningful
 MIN_AREA_THRESHOLD = 1000
@@ -198,7 +204,39 @@ class GlyphsChecker(BaseChecker):
 
     def check(self) -> Iterator[CheckResult]:
         """Run all glyph compatibility checks."""
+        yield from self._check_unicodes(glyph_names=self.only_glyphs)
         yield from self._check_slices(glyph_names=self.only_glyphs)
+
+    def _check_unicodes(self, glyph_names: set[str] | None) -> Iterator[CheckResult]:
+        """4.22/4.23 in each master on its own, one master being enough.
+
+        Every master's cmap is built, so every master is checked; two sources
+        naming the same layer of the same UFO are checked once.
+        """
+        entry = self.entry
+        if entry is None:
+            return
+        skip_export = designspace_skip_export(self.doc)
+        seen: set[tuple] = set()
+        for source in entry.sources:
+            layer_name = source.resolve_layer_name(source.master_layer_name())
+            key = (self._resolve_path(getattr(source, "path", None)), layer_name)
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                layer = source.get_layer()
+            except Exception:  # pragma: no cover - a missing layer is 2.x's finding
+                continue
+            yield from unicode_findings(
+                layer,
+                source_name=self._designspace_name(source),
+                layer_name=layer_name,
+                location=self._label(source),
+                glyphs=glyph_names,
+                glyph_order=safe_glyph_order(source.font),
+                skip_export=skip_export,
+            )
 
     def _slices(self) -> list[tuple[dict, object, list, list]]:
         """The designspace split into interpolable parts, with their sources.

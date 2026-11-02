@@ -39,6 +39,7 @@ CODE_MODULES = {
     "checkers/glyphs.py": 4,
     "checkers/interpolation.py": 4,
     "checkers/construction.py": 4,
+    "checkers/unicodes.py": 4,
     "checkers/kerning.py": 5,
     "checkers/fontinfo.py": 6,
     "checkers/rules.py": 7,

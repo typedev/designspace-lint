@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Codepoints within one master, at Font-Rover's request.
+
+### Added
+
+- **4.22 DUPLICATE_UNICODE** (error): a codepoint given to more than one
+  glyph of a master. ufo2ft builds every master's cmap, the default or not, a
+  UFO or a layer of one, and stops on the second claimant: "cannot map
+  'A.alt' to U+0041; already mapped to 'A'". Until now nothing reported it:
+  4.10 compares one glyph across masters. Glyphs in the designspace's
+  `public.skipExportGlyphs` claim nothing, since the build drops them first;
+  a UFO's own key is ignored in a designspace build, by ufo2ft and fontmake
+  alike, so it does not excuse a duplicate here. Background and other
+  non-master layers are not checked. A duplicate in one master only also
+  gives 4.10 for the glyph whose unicodes now differ; both are right.
+- **4.23 MULTIPLE_UNICODES** (information): a glyph with several codepoints.
+  Legal (space and no-break space, Omega and Ohm); worth knowing because tools
+  that read `glyph.unicode` see only the first.
+- Both run in the `glyphs` phase, also on a designspace with a single master.
+  They read defcon's `layer.unicodeData`, so no glyph is loaded except those
+  with several codepoints.
+- `unicode_findings(layer, *, source_name, layer_name=None, location="",
+  glyphs=None, glyph_order=None, skip_export=())`: the same check on one
+  layer, for a host that checks a standalone UFO. `glyph_order` defaults to
+  the layer's font's; pass the UFO's `public.skipExportGlyphs` as
+  `skip_export` when the UFO is built on its own.
+
+### For consumers
+
+- New group `unicodes` ("Unicodes") in `GROUPS`; 4.22 and 4.23 are in it.
+- 4.22 `raw_data` (all locators): `glyphName` (the first claimant),
+  `glyphNames` (every claimant, in the order ufo2ft reads them: `.notdef`,
+  then the glyph order, then unlisted names by name, so `[0]` is the glyph
+  it keeps), `codepoint` (int), `sourceName`, `layerName` (None for a UFO's
+  default layer). One row per master and codepoint; a layer two sources share
+  is checked once.
+- 4.23 `raw_data` (all locators): `glyphName`, `codepoints` (ints, in the
+  glyph's own order, so `[0]` is `glyph.unicode`), `sourceName`, `layerName`.
+- `lint(..., glyphs=[...])` reports a 4.22 codepoint when any of its
+  claimants is among the glyphs, and 4.23 only for those glyphs.
+- To upgrade a uv lock whose index cache predates the release:
+  `uv lock --upgrade-package designspace-lint --refresh`.
+
 ## [0.8.2] - 2026-10-18
 
 The construction check tells bases from marks by whether they are letters.

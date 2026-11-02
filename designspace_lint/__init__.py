@@ -58,6 +58,7 @@ from .model import (
     StartPointDifference,
 )
 from .checkers.base import label_for_source
+from .checkers.unicodes import unicode_findings
 from .codes import CODES, CodeInfo, code_info
 from .construction import canonical_component_order, component_role
 from .glyph_order import dedupe_glyph_order, raw_glyph_order
@@ -208,6 +209,7 @@ __all__ = [
     "dedupe_glyph_order",
     "canonical_component_order",
     "component_role",
+    "unicode_findings",
     "undeclared_axis_dimensions",
     "undeclared_axis_dimensions_from_string",
     "StrayDimension",
