@@ -685,9 +685,14 @@ class GlyphsChecker(BaseChecker):
                 if hasattr(anchor, "name") and anchor.name:
                     anchor_sources[anchor.name].append(source_name)
 
-            # Collect unicodes with sources
-            unis = tuple(sorted(glyph.unicodes)) if glyph.unicodes else ()
-            unicode_sources[unis].append(source_name)
+            # Collect unicodes with sources. A layer master is compiled
+            # without a cmap (ufo2ft's SPARSE_*_MASTER_TABLES) and varLib takes
+            # the cmap from the default master, so a layer glyph's unicodes
+            # never reach the font; editors leave them empty. Comparing them
+            # would report every layer glyph.
+            if not self._is_layer_source(source):
+                unis = tuple(sorted(glyph.unicodes)) if glyph.unicodes else ()
+                unicode_sources[unis].append(source_name)
 
             # Parse contour stats for detailed checks (only if needed)
             if digest not in contour_stats:

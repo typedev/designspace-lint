@@ -327,3 +327,41 @@ def test_different_unicodes_across_masters_are_reported():
         ]
     )
     assert (DIFFERENT_UNICODES, "A") in _codes(entry)
+
+
+def _layer_unicode_entry(layer_unicodes):
+    """Two UFO masters plus a layer master in the bold UFO holding only H."""
+    h = [[(0, 0), (100, 0), (100, 100), (0, 100)]]
+    return build_designspace(
+        axes=[{"name": "Weight", "tag": "wght", "minimum": 0, "default": 0, "maximum": 100}],
+        sources=[
+            {
+                "name": "Light",
+                "location": {"Weight": 0},
+                "glyphs": {"H": FakeGlyph("H", unicodes=[0x48], contours=h)},
+            },
+            {
+                "name": "Bold",
+                "path": "/tmp/fake/bold.ufo",
+                "location": {"Weight": 100},
+                "glyphs": {"H": FakeGlyph("H", unicodes=[0x48], contours=h)},
+                "layers": {"sparse": {"H": FakeGlyph("H", unicodes=layer_unicodes, contours=h)}},
+            },
+            {
+                "name": "Medium sparse",
+                "path": "/tmp/fake/bold.ufo",
+                "location": {"Weight": 50},
+                "layer_name": "sparse",
+            },
+        ],
+    )
+
+
+def test_layer_master_unicodes_are_not_compared():
+    """A layer master is compiled without a cmap; varLib takes the default's.
+
+    Built with ufo2ft 3.9: the variable font maps U+0048 to H whether the
+    layer glyph has no codepoint or a different one, so neither is a problem.
+    """
+    for layer_unicodes in ([], [0x4A]):
+        assert (DIFFERENT_UNICODES, "H") not in _codes(_layer_unicode_entry(layer_unicodes))

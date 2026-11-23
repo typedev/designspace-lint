@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **4.10 DIFFERENT_UNICODES** no longer compares layer masters
+  (`<source layer="...">`). ufo2ft compiles a layer master without a cmap and
+  varLib takes the cmap from the default master, so a layer glyph's unicodes
+  never reach the font; editors leave them empty, and every such glyph was
+  reported (e.g. "U+0048 vs (none)"). Built with ufo2ft 3.9: the variable font
+  maps U+0048 to H whether the layer glyph has no codepoint or a different
+  one. Whole-UFO masters are compared as before. Reported by TDKit.
+
+### For consumers
+
+- 4.10 is no longer produced for a glyph whose only disagreeing master is a
+  layer master; its `raw_data` groups no longer list layer masters.
+
 ## [0.8.3] - 2026-11-02
 
 Codepoints within one master, at Font-Rover's request.
