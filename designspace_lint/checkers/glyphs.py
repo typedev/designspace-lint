@@ -72,6 +72,22 @@ COMPONENT_ORDER = 19  # same components, drawn in a different order
 # Minimum area threshold to consider direction meaningful
 MIN_AREA_THRESHOLD = 1000
 
+# 4.0, 4.1, 4.3, 4.4, 4.5 and 4.9 are errors: built with ufo2ft 3.9, a
+# variable TrueType build stops in cu2qu ("fonts contains incompatible
+# glyphs") or, where cu2qu has nothing to convert (quadratic outlines,
+# components), varLib skips the glyph's variations ("incompatible masters;
+# skipping") and it stays in the default master's shape; a CFF2 build stops
+# on outlines and silently morphs one base into another on components.
+INCOMPATIBLE_CONSEQUENCE = (
+    " The masters do not interpolate: a variable build stops, or the glyph is left "
+    "out of the variations and stays in the default master's shape."
+)
+COMPONENTS_CONSEQUENCE = (
+    " The masters do not interpolate: a TrueType build leaves the glyph out of the "
+    "variations, in the default master's shape; a CFF2 build decomposes the "
+    "components, then stops or silently morphs one outline into another."
+)
+
 
 def format_groups_location(groups: dict[str, list[str]]) -> str:
     """
@@ -723,7 +739,9 @@ class GlyphsChecker(BaseChecker):
                     glyph_name=glyph_name,
                     location=location,
                     is_structural=False,
-                    details=f"Glyph '{glyph_name}' has different contour counts across sources: {counts_detail}",
+                    severity=SEVERITY_STRUCTURAL,
+                    details=f"Glyph '{glyph_name}' has different contour counts across sources: {counts_detail}."
+                    + INCOMPATIBLE_CONSEQUENCE,
                     problem_type=GlyphProblemType.INCOMPATIBLE_GLYPH,
                     raw_data={
                         "glyphName": glyph_name,
@@ -749,7 +767,9 @@ class GlyphsChecker(BaseChecker):
                         glyph_name=glyph_name,
                         location=location,
                         is_structural=False,
-                        details=f"Glyph '{glyph_name}' uses component '{base_glyph}' in {len(present_in)} sources, but expected in all {num_sources}",
+                        severity=SEVERITY_STRUCTURAL,
+                        details=f"Glyph '{glyph_name}' uses component '{base_glyph}' in {len(present_in)} sources, but expected in all {num_sources}."
+                        + COMPONENTS_CONSEQUENCE,
                         problem_type=GlyphProblemType.COMPONENT_MISMATCH,
                         raw_data={
                             "glyphName": glyph_name,
@@ -834,7 +854,8 @@ class GlyphsChecker(BaseChecker):
                     glyph_name=glyph_name,
                     location=location,
                     is_structural=False,
-                    details=details,
+                    severity=SEVERITY_STRUCTURAL,
+                    details=details + "." + INCOMPATIBLE_CONSEQUENCE,
                     problem_type=GlyphProblemType.INCOMPATIBLE_GLYPH,
                     raw_data={
                         "glyphName": glyph_name,
@@ -876,7 +897,9 @@ class GlyphsChecker(BaseChecker):
                             glyph_name=glyph_name,
                             location=loc,
                             is_structural=False,
-                            details=f"Glyph '{glyph_name}' contour {ci} has different on-curve point counts",
+                            severity=SEVERITY_STRUCTURAL,
+                            details=f"Glyph '{glyph_name}' contour {ci} has different on-curve point counts."
+                            + INCOMPATIBLE_CONSEQUENCE,
                             problem_type=GlyphProblemType.INCOMPATIBLE_GLYPH,
                             raw_data={
                                 "glyphName": glyph_name,
@@ -900,7 +923,9 @@ class GlyphsChecker(BaseChecker):
                             glyph_name=glyph_name,
                             location=loc,
                             is_structural=False,
-                            details=f"Glyph '{glyph_name}' contour {ci} has different off-curve point counts",
+                            severity=SEVERITY_STRUCTURAL,
+                            details=f"Glyph '{glyph_name}' contour {ci} has different off-curve point counts."
+                            + INCOMPATIBLE_CONSEQUENCE,
                             problem_type=GlyphProblemType.INCOMPATIBLE_GLYPH,
                             raw_data={
                                 "glyphName": glyph_name,
@@ -924,7 +949,9 @@ class GlyphsChecker(BaseChecker):
                             glyph_name=glyph_name,
                             location=loc,
                             is_structural=False,
-                            details=f"Glyph '{glyph_name}' contour {ci} has different curve types",
+                            severity=SEVERITY_STRUCTURAL,
+                            details=f"Glyph '{glyph_name}' contour {ci} has different curve types."
+                            + INCOMPATIBLE_CONSEQUENCE,
                             problem_type=GlyphProblemType.CURVE_TYPE_MISMATCH,
                             raw_data={
                                 "glyphName": glyph_name,

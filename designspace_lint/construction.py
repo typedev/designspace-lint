@@ -42,14 +42,9 @@ from fontTools.pens.transformPen import TransformPen
 
 ACCENT = "accent"
 BASE = "base"
-#: No longer returned: a component with no unicode is a mark. Kept for 0.9.x.
-UNKNOWN = "unknown"
 
 #: Unicode general categories that make a component a base; any other is a mark.
 BASE_CATEGORIES = frozenset({"Lu", "Ll", "Lt", "Lo"})
-
-#: The mark categories of 0.8.1, no longer used. Kept for 0.9.x.
-ACCENT_CATEGORIES = frozenset({"Mn", "Me", "Sk", "Lm"})
 
 # Reasons given in the notes.
 NO_UNICODE = "no unicode"

@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Glyph compatibility findings that a build does not survive are now errors.
+
+### Changed
+
+- **4.0, 4.1, 4.3, 4.4, 4.5 and 4.9 are errors** (were warnings). Each was
+  built with ufo2ft 3.9, two masters with one glyph changed:
+  - 4.0 (contour count), 4.3 (on-curve points), 4.4 (off-curve points) and
+    4.5 (curve types): the variable TrueType build stops in cu2qu ("fonts
+    contains incompatible glyphs"), and the CFF2 build stops as well. With
+    quadratic outlines, which cu2qu leaves alone, the TrueType build goes
+    through but varLib skips the glyph's variations ("incompatible masters;
+    skipping") and it stays in the default master's shape.
+  - 4.1 (different components): the TrueType build skips the glyph's
+    variations, as for 4.19; CFF2 decomposes the components and silently
+    morphs one base into the other.
+  - 4.9 (incompatible structures) is reported together with those, for the
+    same differences.
+
+  Their `details` now say so. The codes keep their meaning (4.0–4.10 still
+  match designspaceProblems); only the default severity changes.
+- **4.8 (contour direction) stays a warning**: both builds succeed and the
+  glyph varies, through a twisted shape halfway along the axis.
+- **4.19 stays an error**: a font that builds with one glyph frozen in one
+  master's shape is exactly the silent defect an error is for.
+
+### Removed
+
+- `construction.UNKNOWN` and `construction.ACCENT_CATEGORIES`, deprecated in
+  0.8.2. `component_role` returns `BASE` or `ACCENT`; the rule is
+  `BASE_CATEGORIES`.
+
+### For consumers
+
+- `CODES[(4, n)].default_severity` and `severities` are now `SEVERITY_STRUCTURAL`
+  for n in 0, 1, 3, 4, 5, 9, and the CLI prints them as `error`. A host that
+  reads severities from `CODES` (or from `effective_severity`) needs no code
+  change, but a glyph with incompatible masters now counts as an error in its
+  totals and filters. A host with its own list of blocking codes may want to
+  compare it with the new defaults.
+- The CLI's exit code is unchanged: 1 whenever there are problems.
+- `construction.UNKNOWN` and `ACCENT_CATEGORIES` are gone (see Removed).
+
 ## [0.8.4] - 2026-11-23
 
 A 4.10 fix for layer masters.
