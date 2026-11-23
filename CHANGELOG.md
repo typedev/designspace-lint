@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.4] - 2026-11-23
+
+A 4.10 fix for layer masters.
 
 ### Fixed
 
@@ -21,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 4.10 is no longer produced for a glyph whose only disagreeing master is a
   layer master; its `raw_data` groups no longer list layer masters.
+- No API changes. `construction.UNKNOWN` and `ACCENT_CATEGORIES` stay
+  deprecated and are still due for removal in the next minor release.
+
+### Changed
+
+- CI and the publish workflow use the Node 24 majors of the GitHub actions
+  (checkout v7, setup-python v7, upload-artifact v7, download-artifact v8).
 
 ## [0.8.3] - 2026-11-02
 
