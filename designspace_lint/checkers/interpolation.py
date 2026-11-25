@@ -275,10 +275,10 @@ class InterpolationChecker(GlyphsChecker):
             raw["contour"] = contour
 
         if kind == "contour_order":
-            # fontTools' matching: for each contour of master_1 (the reference
-            # of the pair), the contour of master_2 that matches it. Contours
-            # as interpolatable reads them: the glyph's own, then those of its
-            # components, decomposed.
+            # fontTools' matching: for each item of master_1 (the reference of
+            # the pair), the item of master_2 that matches it. Items as
+            # interpolatable lists them (PerContourOrComponentPen): the
+            # glyph's own contours, then one item per component.
             raw["proposedOrder"] = [int(i) for i in problem.get("value_2", [])]
             return self._make_result(
                 code=CONTOUR_ORDER,

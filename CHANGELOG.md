@@ -40,10 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   agree. Of the readings of the target whose point types match the
   reference's, the best is the one whose points lie closest, each contour
   scaled into its own bounding box.
-- **4.14 carries `proposedOrder`**: fontTools' matching, for each contour of
-  the pair's first master (`raw_data["masters"][0]`), the contour of the
-  second that matches it. Contours as interpolatable reads them: the glyph's
-  own, then its components', decomposed. It was only in the details text.
+- **4.14 carries `proposedOrder`**: fontTools' matching, for each item of
+  the pair's first master (`raw_data["masters"][0]`), the item of the second
+  that matches it. Items as interpolatable lists them: the glyph's own
+  contours, then one item per component (measured on its decomposed outline),
+  so the first entries, one per own contour, index the UFO's contours. It was
+  only in the details text.
 - **`--json` writes `raw_data`** for every finding: contour indexes, proposed
   start points, the masters of a finding's groups. Sets are written as
   sorted lists.
