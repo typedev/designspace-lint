@@ -190,6 +190,24 @@ class _ContoursOnlyPen:
         pass
 
 
+def draw_points(glyph, pen) -> None:
+    """Draw a glyph into a point pen, through defcon when it has one under it.
+
+    fontParts wraps every contour and point it hands out; defcon's own
+    drawPoints sends the same calls, in the same order, without the wrappers.
+    """
+    naked = getattr(glyph, "naked", None)
+    if callable(naked):
+        try:
+            source = naked()
+        except Exception:  # pragma: no cover - defensive
+            source = None
+        if source is not None and hasattr(source, "drawPoints"):
+            source.drawPoints(pen)
+            return
+    glyph.drawPoints(pen)
+
+
 class _Outline:
     """One master's glyph, read once: its points and components.
 
@@ -203,16 +221,7 @@ class _Outline:
 
     def __init__(self, glyph):
         recording = RecordingPointPen()
-        naked = getattr(glyph, "naked", None)
-        source = None
-        if callable(naked):
-            try:
-                source = naked()
-            except Exception:  # pragma: no cover - defensive
-                source = None
-        (source if source is not None and hasattr(source, "drawPoints") else glyph).drawPoints(
-            recording
-        )
+        draw_points(glyph, recording)
         self.recording = recording
         #: Each contour as a list of (x, y, segmentType); None for off-curve.
         self.contours: list[list[tuple]] = []

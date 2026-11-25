@@ -37,7 +37,7 @@ from fontTools.pens.pointPen import PointToSegmentPen
 from fontTools.pens.recordingPen import RecordingPointPen
 
 from ..model import SEVERITY_INFO, CheckResult, GlyphProblemType
-from .glyphs import GlyphsChecker
+from .glyphs import GlyphsChecker, draw_points
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +147,7 @@ class _GlyphSet:
             if glyph is None:
                 return None
             recording = RecordingPointPen()
-            glyph.drawPoints(recording)
+            draw_points(glyph, recording)
             self._recordings[name] = recording
         return _Glyph(recording, self)
 
