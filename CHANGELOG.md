@@ -94,11 +94,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instance between them, and their near mirror images read as contours in
   another order, start points moved and contours thinning out. The phase now
   builds the tree scipy would (a minimum spanning tree of the normalized
-  locations, in pure Python) and runs interpolatable on each of its edges. On
-  a large 4-axis designspace (84 masters) the findings went from 323 to 25,
-  the same glyphs, codes and contours as with scipy. scipy is not needed for
-  it; the `interpolatable` extra (munkres) still covers contour matching in
-  glyphs of more than six contours.
+  locations, in pure Python), per glyph over the masters that draw it, and
+  runs interpolatable on each of its edges. On a large 4-axis designspace (84
+  masters) the findings went from 323 to 25, the same glyphs, codes and
+  contours as with scipy. On GoogleSansFlex (657 sources, 441 of them sparse
+  layers) it finds all 21 of fontTools-with-scipy's and 11 more: fontTools
+  spans its tree over every master, so a glyph most masters lack is compared
+  across whatever ancestor has it, while the per-glyph tree compares true
+  neighbours (A between width 25 and 100 at one optical size, with no master
+  between). scipy is not needed; the `interpolatable` extra (munkres) still
+  covers contour matching in glyphs of more than six contours.
 
 ### Performance
 
@@ -109,9 +114,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The glyphs phase reads each glyph once per master**, through defcon when
   the glyph has one under it, into a recording that the structure, contour
   and direction checks all read from. fontParts wraps every contour and point
-  it hands out, and reading through it was most of the phase. A full run on a
-  large 4-axis designspace (84 masters) went from 46 s to 32 s, and to 69 s
-  from 95 s with `--interpolatable --construction`.
+  it hands out, and reading through it was most of the phase.
+- **A full run is 25-40 % faster, and with `--interpolatable --construction`
+  35-55 %.** A large 4-axis designspace (84 masters): 45 s to 34 s, and 95 s
+  to 61 s. GoogleSansFlex (657 sources): 142 s to 87 s, and 419 s to 191 s.
+  Its point-correspondence phase alone takes 135 s, against 426 s for
+  fontTools' interpolatable with scipy over the same open fonts. Memory is
+  unchanged.
 - **The point-correspondence phase reads each glyph once per master**, into a
   recording it replays, instead of drawing it through fontParts on every
   comparison. With the neighbour tree above it runs faster than before
