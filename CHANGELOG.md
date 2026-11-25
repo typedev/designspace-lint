@@ -50,6 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `checkers.kerning.group_overlap_findings(groups, source_name=..., location=...)`:
   5.8 for one font, public like `unicode_findings`, so a host that checks a
   standalone UFO need not keep its own copy.
+- **Every `raw_data` key is documented.** `CodeInfo.raw_keys` lists every key
+  a code's findings may carry (the locators first), and `codes.RAW_KEYS` says
+  what each of the 120 keys means, so a fixer, a script or an AI assistant,
+  can act on documented data instead of the wording. A test fails any finding
+  that carries a key its code does not list.
 - `checkers.components.component_findings(layer, ...)`, public like
   `unicode_findings`: the three checks for one layer, so a host checking a
   standalone UFO runs the same rules. `build_layer=False` reports a layer no
@@ -118,6 +123,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 4.14–4.17 now name different master pairs (`raw_data["masters"]`,
   `["pairs"]`): neighbours in the designspace. Where several neighbours are
   equally close the pair can differ from scipy's choice.
+- New: `CodeInfo.raw_keys`, `codes.RAW_KEYS`, `contours.align_contour` /
+  `readings` / `Alignment`, `checkers.components.component_findings` and
+  friends, `checkers.kerning.group_overlap_findings`.
+- 4.5, 4.8 and 4.9 may carry `reference` and `realign`; 4.14 carries
+  `proposedOrder`. In `realign`, `proposedStart` indexes the contour's points
+  as drawn in the UFO. 4.15's own top-level `proposedStart` is unchanged:
+  fontTools' index, counted as interpolatable reads the contour (from its
+  first on-curve point).
+- 4.8 now reports fewer contours: a sign of the area that differs from the
+  default master's is no longer enough when the points line up as drawn.
+- Progress: the glyph phases report per glyph, so `on_progress` is called far
+  more often during `--interpolatable` and `--construction` runs, with
+  messages like "Checking point correspondence (12/980)". The total now
+  counts one unit per glyph for each glyph phase.
 - `BaseChecker._own_glyph` and `_own_keys` are instance methods now, and
   `_own_keys` returns a frozenset (private API, mentioned for anyone who
   subclassed a checker).

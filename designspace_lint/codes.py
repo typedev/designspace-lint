@@ -26,6 +26,11 @@ group), `sourceName`, `layerName`, `axisName`, `ruleName`, `glyphName`,
 `mappingIndex`, and for the unicode checks `glyphNames`, `codepoint`,
 `codepoints`. A code with no locators promises none yet; they
 are added as checks are revisited, never removed.
+
+`raw_keys` lists every key a code's findings *may* carry, and `RAW_KEYS` says
+what each key means, so a fixer -- a person's script or an AI assistant --
+can act on documented data instead of the wording. A test fails any finding
+that carries a key its code does not list.
 """
 
 from __future__ import annotations
@@ -63,6 +68,9 @@ class CodeInfo:
     construction_only: bool = False
     #: `raw_data` keys guaranteed on every finding with this code.
     locators: tuple[str, ...] = ()
+    #: Every `raw_data` key a finding with this code may carry, the locators
+    #: first; `RAW_KEYS[key]` says what each means.
+    raw_keys: tuple[str, ...] = ()
     #: Declared but no longer reported; the number stays taken.
     retired: bool = False
 
@@ -262,9 +270,273 @@ def _build() -> dict[tuple[int, int], CodeInfo]:
             interpolatable_only="interpolatable" in flags,
             construction_only="construction" in flags,
             locators=tuple(locators),
+            raw_keys=_raw_keys(key, locators),
             retired="retired" in flags,
         )
     return codes
+
+
+def _raw_keys(key: tuple[int, int], locators) -> tuple[str, ...]:
+    keys = list(locators) + [k for k in _RAW_KEYS.get(key, ()) if k not in locators]
+    # The engine tags every finding of a phase it runs per discrete slice,
+    # a phase that failed there included.
+    if _PHASE.get(key[0]) not in ("file", "geometry", "labels") or key == (0, 1):
+        keys.append("discreteLocation")
+    return tuple(keys)
+
+
+#: What every `raw_data` key means. One meaning per key; where codes read a
+#: key differently, the text says which code reads it how. Master labels are
+#: what `label_for_source` gives ("Bold.ufo (Bold)", "Light.ufo [mid]").
+RAW_KEYS: dict[str, str] = {
+    # --- locators (see the module docstring) ---
+    "axisName": "The axis' name, as the designspace declares it (for 1.19-1.22 and 2.3/3.2, as written, which may be no axis at all).",
+    "codepoint": "The codepoint, an int.",
+    "codepoints": "The glyph's codepoints, ints, in the order the glyph lists them.",
+    "glyphName": "The glyph the finding is about; for a group of glyphs (4.22, 4.24), the first of `glyphNames`.",
+    "glyphNames": "Every glyph the finding is about: 4.22 those claiming the codepoint in build order, 4.24 the ring's glyphs, sorted.",
+    "instanceIndex": "The instance's position in the document, from 0.",
+    "instanceIndices": "Positions of the instances the finding is about, from 0.",
+    "instanceName": "The instance's `name` attribute, or None when it has none.",
+    "layerName": "The UFO layer the finding is in; None for the UFO's default layer.",
+    "mappingIndex": "The avar2 mapping's position in the document, from 0.",
+    "ruleName": "The rule's name (or a generated one when it has none).",
+    "sourceName": "The source's `name` attribute in the designspace (its filename when it has none).",
+    # --- where a finding's masters stand ---
+    "locationType": 'How the masters of a finding are given: "groups" (`groups`: label -> masters) or "binary" (`presentIn` / `missingIn`).',
+    "groups": 'Masters grouped by what they have, label -> master labels. The label is the value itself where it is short (4.0, 4.3, 4.4: the count; 4.8: "CW"/"CCW"; 4.10: the unicodes) and a placeholder otherwise ("pattern1", "type1", "order1"), most masters first.',
+    "presentIn": "Labels of the masters that have it.",
+    "missingIn": "Labels of the masters that lack it (4.12: the master where the glyph is empty).",
+    "masters": "1.28: how many masters sit off the hidden axis' default. 4.14-4.17: the pair compared, [reference, other], master labels; the reference is the one nearer the default.",
+    "pairs": "Every pair of neighbouring masters the same problem was found between, each [reference, other]; `masters` is the surest of them.",
+    "discreteLocation": "The discrete slice the finding came from (axis name -> value), on designspaces with discrete axes; {} for the slice at the defaults.",
+    "reference": "Label of the master the contours are read against: the default master of the slice.",
+    "realign": 'For 4.5 and 4.8: master label -> {"proposedStart", "reversed"}; for 4.9: master label -> [{"contour", "proposedStart", "reversed"}]. The master\'s contour is the reference\'s points drawn from another start or the other way: `proposedStart` is the index, in the master\'s contour as drawn in the UFO, of the point that should come first; with `reversed` true the contour reads proposedStart, proposedStart-1, ... (see `designspace_lint.contours.align_contour`).',
+    # --- run ---
+    "phase": "The phase that raised.",
+    "exception": "repr() of the exception it raised.",
+    # --- axes and mappings ---
+    "value": "The value the finding is about: 1.1 the axis' minimum (= its maximum); 2.4, 2.10, 3.3, 3.5, 3.11 the location's value on `axisName`, as the location gives it; 10.1 the value no label covers and 10.7 the value two labels share or none names (user coordinates).",
+    "values": "The discrete axis' declared values.",
+    "default": "1.2, 1.15, 1.16: the axis' default. 8.3: label of the default master.",
+    "minimum": "Lower bound: of the axis (1.2, 1.4, 2.4), or of the rule's condition box (7.2).",
+    "maximum": "Upper bound: of the axis (1.2, 1.4, 2.4), or of the rule's condition box (7.2).",
+    "min": "The lower bound the instance's value is compared with.",
+    "max": "The upper bound the instance's value is compared with.",
+    "axisMin": "The axis' minimum (user coordinates).",
+    "axisMax": "The axis' maximum (user coordinates).",
+    "mapMin": "The smallest input of the axis' map.",
+    "mapMax": "The largest input of the axis' map.",
+    "input": "1.4: the map input outside the axis. 1.18: the mapping's input location, axis name -> value.",
+    "output": "The mapping's output location, axis name -> value.",
+    "inputs": "The axis map's inputs, in document order.",
+    "outputs": "The axis map's outputs, in document order.",
+    "axisIndex": "Position of the second axis of that name in the document, from 0.",
+    "axisTag": "The tag both axes carry.",
+    "side": 'Which side: 1.24 "input"/"output" of the mapping; 4.11 "minimum"/"maximum" of the axis; 5.8 "first"/"second" kerning side.',
+    "clamped": 'Each clamped value: {"side": "input"|"output", "axisName", "value" as written, "usedValue" the axis end it is clamped to}.',
+    "axes": 'Each output past the masters: {"axisName", "value", "masterExtent": [lowest, highest] master value on that axis}.',
+    "writers": "Positions of the mappings that write the axis this mapping reads, from 0.",
+    "from": "Normalized coordinate where the axis starts running backwards.",
+    "to": "Normalized coordinate where it stops.",
+    "duplicateOf": "What this repeats: 1.23 the earlier mapping's position; 2.6 the name of the source already at this location; 7.6 the earlier rule's position.",
+    "variableFont": "The `<variable-font>`'s name.",
+    # --- sources and instances ---
+    "path": "Path of the UFO (2.x) or of the instance's file, None when it has none (3.1).",
+    "location": "2.3 and 2.6: the source's location as written, axis name -> design value. 3.4: the location the instances share.",
+    "source": "The source's name (kept for older consumers; same as `sourceName`).",
+    "availableLayers": "The layers the UFO does have.",
+    "instance": "The instance's position in the document (kept for older consumers; same as `instanceIndex`).",
+    "instances": 'Family and style of each instance at the location ("unnamed" for one with neither).',
+    "kind": 'What carries the undeclared axis: "instance" or "label" (a location label).',
+    "locationLabel": "The location label the instance names.",
+    "familyName": "The instance's familyName.",
+    "styleName": "The instance's styleName as written.",
+    "statStyleName": "The style name the build derives from the axis and location labels instead.",
+    # --- glyphs ---
+    "baseGlyph": "The component's base glyph.",
+    "anchorName": "The anchor's name.",
+    "contourIndex": "Index of the contour in the glyph, from 0.",
+    "contour": "Index of the contour, from 0, as interpolatable counts them: the glyph's own contours, then its components' decomposed.",
+    "contours": "Indexes of the open contours, from 0.",
+    "point": "Index of the point within the contour, as interpolatable counts them.",
+    "type": 'fontTools interpolatable\'s problem type ("contour_order", "wrong_start_point", "underweight", "kink").',
+    "tolerance": "interpolatable's score for the pair, 0..1: the lower, the surer the problem.",
+    "proposedOrder": "fontTools' matching: for each contour of the reference (`masters[0]`), the index of the other master's contour that matches it. Contours as interpolatable reads them: the glyph's own, then its components', decomposed.",
+    "proposedStart": "fontTools' proposed start point for the other master's contour: an index into the contour as interpolatable reads it (from its first on-curve point), which can differ from the UFO's point order. 4.5/4.8/4.9 give a UFO index in `realign`.",
+    "reversed": "Whether the other master's contour runs the other way.",
+    "axis": "The axis' name (kept for older consumers; same as `axisName`).",
+    "required": "The axis value the masters reach on that side (design coordinates).",
+    "covered": "The last value along the axis where the glyph is drawn (design coordinates).",
+    "width": "The empty glyph's advance width in that master.",
+    "orders": "Placeholder label -> the component base names in that order.",
+    "current": "Placeholder label (as in `groups`) -> the components in their current order.",
+    "expected": "Placeholder label -> the components in the expected order.",
+    "expectedDiffers": "Whether the expected order differs between masters (the marks stack differently).",
+    "components": 'Each component placed without a unicode: {"index", "baseGlyph", "reason", "sources": master labels}.',
+    "glyphs": "4.18: the glyphs left unchecked. 7.7: the glyphs both rules substitute.",
+    "links": "Each glyph of the ring -> its component bases that are in the ring: the components a fix chooses from.",
+    "missingBases": "The component bases the build cannot find.",
+    # --- kerning ---
+    "font": "Label of the master.",
+    "hasGroups": "Whether the master has kerning groups.",
+    "groupName": "The kerning group.",
+    "otherGroup": "The group of the same side that claimed the glyph first, and is kept.",
+    "defaultMembers": "The group's members in the default master.",
+    "sourceMembers": "The group's members in this master.",
+    "keys": "The kerning keys a UFO reader refuses, each [first, second], at most 20.",
+    # --- font info ---
+    "field": "The fontinfo attribute.",
+    "defaultValue": "Its value in the default master.",
+    "sourceValue": "Its value in this master.",
+    # --- rules ---
+    "ruleIndex": "The rule's position in the document, from 0.",
+    "axisMinimum": "The axis' minimum.",
+    "axisMaximum": "The axis' maximum.",
+    "conditionMinimum": "The condition's minimum as written.",
+    "conditionMaximum": "The condition's maximum as written.",
+    "substitution": 'Which side of the substitution names the missing glyph: "source" or "target".',
+    "rules": "The names of the overlapping rules, in document order.",
+    "declarationOrderRule": "The rule that wins by document order (what a reader of the file expects).",
+    "variableFontRule": "The rule the variable font applies (its substitutions sort first).",
+    # --- features ---
+    "error": "The feature file's parse error, as the parser gives it.",
+    "feature": "The feature's tag.",
+    "count": "How many masters have it.",
+    "total": "How many masters there are.",
+    "matching": "Labels of the masters whose features.fea matches the default's.",
+    "empty": "Labels of the masters with no features.fea.",
+    "differing": "Labels of the masters whose features.fea differs from the default's.",
+    # --- glyph order ---
+    "sources": "Labels of the masters that have the glyph.",
+    "defaultSourceIndex": "The default master's position among the sources, from 0.",
+    "defaultSourcePath": "Path of the default master's UFO.",
+    "defaultPosition": "The glyph's position in the default master's glyph order, from 0.",
+    "sourceIndex": "The other master's position among the sources, from 0.",
+    "sourcePath": "Path of the other master's UFO.",
+    "sourcePosition": "The glyph's position in the other master's glyph order, from 0.",
+    # --- labels ---
+    "label": "The label's name.",
+    "labels": "10.3: the labels the variable font's subset drops. 10.5: the two overlapping range labels. 10.7: the two labels at one value.",
+    "linked": "The label's linked value (user coordinates).",
+    "missingAxes": "The axes the location label leaves out.",
+    "locations": "The locations, described, where every label is elided.",
+}
+
+#: Every `raw_data` key each live code's findings may carry, besides
+#: `discreteLocation` (added by `_raw_keys`). Locators come first.
+# fmt: off
+_RAW_KEYS: dict[tuple[int, int], tuple[str, ...]] = {
+    (0, 0): (),
+    (0, 1): ('exception', 'phase'),
+    (1, 0): (),
+    (1, 1): ('axisName', 'value'),
+    (1, 2): ('axisName', 'default', 'maximum', 'minimum'),
+    (1, 3): ('axisName',),
+    (1, 4): ('axisName', 'input', 'maximum', 'minimum'),
+    (1, 6): ('axisName', 'axisMin', 'mapMin'),
+    (1, 7): ('axisName', 'axisMax', 'mapMax'),
+    (1, 8): ('axisName', 'inputs'),
+    (1, 9): ('axisName', 'outputs'),
+    (1, 13): ('axisName', 'axisIndex'),
+    (1, 14): ('axisName', 'axisTag'),
+    (1, 15): ('axisName', 'default', 'inputs'),
+    (1, 16): ('axisName', 'default', 'values'),
+    (1, 17): (),
+    (1, 18): ('mappingIndex', 'input', 'output'),
+    (1, 19): ('axisName', 'variableFont'),
+    (1, 20): ('axisName', 'variableFont'),
+    (1, 21): ('axisName', 'variableFont'),
+    (1, 22): ('axisName', 'variableFont'),
+    (1, 23): ('mappingIndex', 'duplicateOf'),
+    (1, 24): ('mappingIndex', 'axisName', 'side'),
+    (1, 25): ('mappingIndex', 'clamped'),
+    (1, 26): ('mappingIndex', 'axes'),
+    (1, 27): ('mappingIndex', 'axisName', 'writers'),
+    (1, 28): ('axisName', 'masters'),
+    (1, 29): ('axisName', 'from', 'to'),
+    (2, 0): (),
+    (2, 1): ('sourceName', 'path'),
+    (2, 2): ('sourceName', 'path'),
+    (2, 3): ('sourceName', 'axisName', 'location', 'path', 'source'),
+    (2, 4): ('axisName', 'maximum', 'minimum', 'path', 'value'),
+    (2, 5): (),
+    (2, 6): ('sourceName', 'duplicateOf', 'location', 'path'),
+    (2, 7): ('layerName', 'availableLayers', 'path'),
+    (2, 10): ('sourceName', 'axisName', 'path', 'value'),
+    (3, 1): ('instanceIndex', 'instance', 'path'),
+    (3, 2): ('axisName', 'kind'),
+    (3, 3): ('axisName', 'max', 'min', 'value'),
+    (3, 4): ('instances', 'location'),
+    (3, 5): ('axisName', 'max', 'min', 'value'),
+    (3, 6): ('instanceIndex', 'instance', 'instanceName'),
+    (3, 7): ('instanceIndex', 'instance', 'instanceName'),
+    (3, 8): ('instanceIndex', 'instance', 'instanceName'),
+    (3, 10): (),
+    (3, 11): ('axisName', 'value'),
+    (3, 12): ('instanceIndex', 'instanceName', 'instance', 'locationLabel'),
+    (3, 13): ('familyName', 'styleName'),
+    (4, 0): ('glyphName', 'groups', 'locationType'),
+    (4, 1): ('glyphName', 'baseGlyph', 'locationType', 'missingIn', 'presentIn'),
+    (4, 2): ('glyphName', 'anchorName', 'locationType', 'missingIn', 'presentIn'),
+    (4, 3): ('glyphName', 'contourIndex', 'groups', 'locationType'),
+    (4, 4): ('glyphName', 'contourIndex', 'groups', 'locationType'),
+    (4, 5): ('glyphName', 'contourIndex', 'groups', 'locationType', 'realign', 'reference'),
+    (4, 7): ('glyphName', 'locationType', 'missingIn', 'presentIn'),
+    (4, 8): ('glyphName', 'contourIndex', 'groups', 'locationType', 'realign', 'reference'),
+    (4, 9): ('glyphName', 'groups', 'locationType', 'realign', 'reference'),
+    (4, 10): ('glyphName', 'groups', 'locationType'),
+    (4, 11): ('glyphName', 'axisName', 'axis', 'covered', 'locationType', 'missingIn', 'required', 'side'),
+    (4, 12): ('glyphName', 'locationType', 'missingIn', 'presentIn', 'width'),
+    (4, 13): ('glyphName', 'locationType', 'presentIn'),
+    (4, 14): ('glyphName', 'masters', 'pairs', 'proposedOrder', 'tolerance', 'type'),
+    (4, 15): ('glyphName', 'contour', 'masters', 'pairs', 'proposedStart', 'reversed', 'tolerance', 'type'),
+    (4, 16): ('glyphName', 'contour', 'masters', 'pairs', 'tolerance', 'type'),
+    (4, 17): ('glyphName', 'contour', 'masters', 'pairs', 'point', 'tolerance', 'type'),
+    (4, 18): ('glyphs',),
+    (4, 19): ('glyphName', 'groups', 'locationType', 'orders'),
+    (4, 20): ('glyphName', 'current', 'expected', 'expectedDiffers', 'groups', 'locationType'),
+    (4, 21): ('glyphName', 'components'),
+    (4, 22): ('glyphName', 'glyphNames', 'codepoint', 'sourceName', 'layerName'),
+    (4, 23): ('glyphName', 'codepoints', 'sourceName', 'layerName'),
+    (4, 24): ('glyphName', 'glyphNames', 'sourceName', 'layerName', 'links'),
+    (4, 25): ('glyphName', 'sourceName', 'layerName', 'missingBases'),
+    (4, 26): ('glyphName', 'sourceName', 'layerName', 'contours'),
+    (5, 0): ('sourceName', 'font', 'hasGroups'),
+    (5, 1): ('sourceName', 'font'),
+    (5, 2): ('sourceName', 'defaultMembers', 'font', 'groupName', 'sourceMembers'),
+    (5, 3): ('sourceName', 'font', 'groupName'),
+    (5, 5): ('sourceName', 'font'),
+    (5, 6): ('sourceName', 'font'),
+    (5, 7): ('sourceName', 'defaultMembers', 'font', 'groupName', 'sourceMembers'),
+    (5, 8): ('glyphName', 'sourceName', 'font', 'groupName', 'otherGroup', 'side'),
+    (5, 9): ('sourceName', 'font', 'keys'),
+    (6, 0): ('sourceName', 'defaultValue', 'field', 'sourceValue'),
+    (6, 1): ('sourceName', 'field'),
+    (6, 2): ('sourceName', 'defaultValue', 'field', 'sourceValue'),
+    (7, 0): ('ruleName', 'ruleIndex'),
+    (7, 1): ('ruleName', 'axisName'),
+    (7, 2): ('ruleName', 'axisName', 'maximum', 'minimum'),
+    (7, 3): ('ruleName', 'axisName', 'axisMaximum', 'axisMinimum', 'conditionMaximum', 'conditionMinimum'),
+    (7, 4): ('ruleName', 'ruleIndex'),
+    (7, 5): ('ruleName', 'glyphName', 'substitution'),
+    (7, 6): ('ruleName', 'duplicateOf', 'ruleIndex'),
+    (7, 7): ('declarationOrderRule', 'glyphs', 'rules', 'variableFontRule'),
+    (8, 0): ('sourceName', 'error'),
+    (8, 1): ('count', 'feature', 'total'),
+    (8, 3): ('default', 'differing', 'empty', 'matching'),
+    (9, 0): ('glyphName', 'sources'),
+    (9, 3): ('glyphName', 'sourceName', 'defaultPosition', 'defaultSourceIndex', 'defaultSourcePath', 'sourceIndex', 'sourcePath', 'sourcePosition'),
+    (10, 0): ('instanceName', 'instanceIndex', 'statStyleName', 'styleName'),
+    (10, 1): ('axisName', 'instanceIndex', 'instanceName', 'value'),
+    (10, 2): ('instanceIndices', 'locations'),
+    (10, 3): ('axisName', 'label', 'labels', 'variableFont'),
+    (10, 4): ('label', 'missingAxes'),
+    (10, 5): ('axisName', 'label', 'labels'),
+    (10, 6): ('axisName', 'label', 'linked'),
+    (10, 7): ('axisName', 'labels', 'value'),
+}
+# fmt: on
 
 
 #: Every code, keyed by `(category, code)`.
@@ -276,4 +548,4 @@ def code_info(problem) -> CodeInfo | None:
     return CODES.get((problem.category, problem.code))
 
 
-__all__ = ["CODES", "GROUPS", "CodeInfo", "code_info"]
+__all__ = ["CODES", "GROUPS", "RAW_KEYS", "CodeInfo", "code_info"]

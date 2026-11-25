@@ -16,12 +16,17 @@ silent checks went unnoticed.
 
 import pytest
 
+from designspace_lint import engine
 from designspace_lint.checkers import base
 from designspace_lint.codes import CODES
 from designspace_lint.model import effective_severity
 
 # Every (category, code) any test produced, for the end-of-session check.
 _SEEN: set[tuple[int, int]] = set()
+
+
+def _undocumented_keys(result, info) -> list[str]:
+    return [key for key in result.raw_data if key not in info.raw_keys]
 
 
 @pytest.fixture(autouse=True)
@@ -47,9 +52,26 @@ def _results_match_the_catalogue(monkeypatch):
             missing = [key for key in info.locators if key not in result.raw_data]
             if missing:
                 problems.append(f"{where} lacks locator(s) {missing}")
+            extra = _undocumented_keys(result, info)
+            if extra:
+                problems.append(f"{where} carries raw_data key(s) CODES does not list: {extra}")
         return result
 
+    # The engine adds keys after a result is made (discreteLocation, the
+    # merged pairs of 4.14-4.17) and makes 0.1 itself: check what leaves it.
+    original_run = engine.Linter.run
+
+    def run(self, *args, **kwargs):
+        for result in original_run(self, *args, **kwargs):
+            info = CODES.get((result.category, result.code))
+            extra = _undocumented_keys(result, info) if info is not None else []
+            if extra:
+                where = f"{result.category}.{result.code}"
+                problems.append(f"{where} carries raw_data key(s) CODES does not list: {extra}")
+            yield result
+
     monkeypatch.setattr(base.BaseChecker, "_make_result", recording)
+    monkeypatch.setattr(engine.Linter, "run", run)
     yield
     assert not problems, "; ".join(sorted(set(problems)))
 

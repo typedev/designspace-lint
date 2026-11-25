@@ -45,9 +45,11 @@ other way twists between them, contours in another order swap shapes, a curve
 thins out or kinks halfway. varLib builds all of it without a word.
 `--interpolatable` (or `lint(..., interpolatable=True)`) runs fontTools'
 `varLib.interpolatable` over the masters already open and reports these as
-4.14–4.17. It roughly doubles the run time, so it is off by default. Glyphs of
-more than six contours need an assignment solver; without the extra they are
-counted and reported once (4.18) instead of checked.
+4.14–4.17. Each master is compared with its neighbours in the designspace (a
+minimum spanning tree of the locations, as fontTools builds with scipy;
+scipy itself is not needed). It roughly doubles the run time, so it is off by
+default. Glyphs of more than six contours need an assignment solver; without
+the extra they are counted and reported once (4.18) instead of checked.
 
 ### House order of composites: `--construction`
 
@@ -101,6 +103,17 @@ public, so a new release does not need code changes on the consuming side:
   `instanceIndices`, `sourceName`, `layerName`, `axisName`, `ruleName`,
   `glyphName`, `mappingIndex`). Use them to find what a finding is about instead of
   parsing `location`.
+- **Every `raw_data` key**: `CODES[...].raw_keys` lists all the keys a code's
+  findings may carry, and `codes.RAW_KEYS[key]` says what each means: contour
+  indexes, a proposed start point (`realign`), the masters of a finding's
+  groups. `--json` writes `raw_data` too. A fix can act on this data rather
+  than on the wording.
+- **Rules a fix can call**: `contours.align_contour(reference, target)` (where
+  a contour should start, and which way it should run, to match the default
+  master), `canonical_component_order` (4.20), and per-font functions for a
+  standalone UFO: `checkers.unicodes.unicode_findings`,
+  `checkers.components.component_findings`,
+  `checkers.kerning.group_overlap_findings`.
 - **Scoped runs**: `lint(ds, phases=["glyphs"], glyphs=["a", "b"])`
   rechecks a few glyphs; "file" and "geometry" always run.
 - **Helpers**: `label_for_source(source)` names a master the way findings do.
@@ -121,7 +134,7 @@ changelog has a "For consumers" section.
 | 1 Geometry | axis minimum/default/maximum, mappings, duplicate names and tags, discrete axis values, **avar2 mappings**: from the default, duplicate inputs, unknown axes, clamped values, outputs past the masters, chains; the declared `<variable-fonts>` |
 | 2 Sources | locations (as written in the file, before fontTools drops unknown axes), missing UFOs, duplicate locations as varLib compares them, the default, sources off a discrete axis' values |
 | 3 Instances | instance locations and names, unknown location labels, one name at two locations |
-| 4 Glyphs | master compatibility: contours, points, curve types, components, anchors, unicodes, contour direction, empty glyphs, **how far along each axis a glyph actually reaches**, and with `--interpolatable` start points, contour order and shapes that thin out or kink |
+| 4 Glyphs | master compatibility: contours, points, curve types, components, anchors, unicodes, contour direction, empty glyphs, **how far along each axis a glyph actually reaches**, components in a ring or of a missing glyph, open contours, and with `--interpolatable` start points, contour order and shapes that thin out or kink |
 | 5 Kerning | kerning groups, masters with no kerning, a glyph in two groups of one side |
 | 6 Font Info | units per em, required fields, values that differ |
 | 7 Rules | rule conditions, rules that never apply, rule glyphs missing from the default master, **overlapping rules** |

@@ -187,3 +187,17 @@ def test_the_names_deprecated_in_0_6_are_gone():
     assert not hasattr(glyph_order, "_raw_glyph_order")
     assert not hasattr(GlyphsChecker, "check_glyphs")
     assert glyph_order.dedupe_glyph_order(["a", "b", "a"]) == ["a", "b"]
+
+
+def test_every_raw_data_key_is_documented():
+    """A fixer acts on raw_data, so every key a code may carry says what it means."""
+    from designspace_lint.codes import RAW_KEYS
+
+    used = set()
+    for key, info in CODES.items():
+        assert set(info.locators) <= set(info.raw_keys), key
+        assert len(set(info.raw_keys)) == len(info.raw_keys), key
+        for raw_key in info.raw_keys:
+            assert RAW_KEYS.get(raw_key), f"{key}: {raw_key} has no meaning in RAW_KEYS"
+            used.add(raw_key)
+    assert set(RAW_KEYS) == used, f"RAW_KEYS documents keys no code carries: {set(RAW_KEYS) - used}"
