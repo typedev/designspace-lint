@@ -33,7 +33,9 @@ if TYPE_CHECKING:
     from fontParts.world import RFont
 
 from fontPens.digestPointPen import DigestPointStructurePen
+from fontTools.pens.recordingPen import RecordingPointPen
 
+from ..contours import align_contour
 from ..glyph_order import safe_glyph_order
 from ..model import (
     CATEGORY_GLYPHS,
@@ -186,6 +188,120 @@ class _ContoursOnlyPen:
 
     def addComponent(self, baseGlyphName, transformation, identifier=None, **kwargs):
         pass
+
+
+class _Outline:
+    """One master's glyph, read once: its points and components.
+
+    Drawn through defcon when the glyph has one under it: fontParts wraps
+    every contour and point it hands out, and reading the structure through
+    it was most of the glyphs phase's time. The recording is replayed for the
+    structure digests, so they are the ones `glyph.drawPoints` gives.
+    """
+
+    __slots__ = ("recording", "contours", "components")
+
+    def __init__(self, glyph):
+        recording = RecordingPointPen()
+        naked = getattr(glyph, "naked", None)
+        source = None
+        if callable(naked):
+            try:
+                source = naked()
+            except Exception:  # pragma: no cover - defensive
+                source = None
+        (source if source is not None and hasattr(source, "drawPoints") else glyph).drawPoints(
+            recording
+        )
+        self.recording = recording
+        #: Each contour as a list of (x, y, segmentType); None for off-curve.
+        self.contours: list[list[tuple]] = []
+        #: Each component as (base glyph name, transformation).
+        self.components: list[tuple[str, tuple]] = []
+        current = None
+        for method, args, kwargs in recording.value:
+            if method == "beginPath":
+                current = []
+            elif method == "addPoint":
+                pt = args[0]
+                segment_type = args[1] if len(args) > 1 else kwargs.get("segmentType")
+                current.append((pt[0], pt[1], segment_type))
+            elif method == "endPath":
+                self.contours.append(current)
+                current = None
+            elif method == "addComponent":
+                transformation = args[1] if len(args) > 1 else kwargs.get("transformation")
+                self.components.append((args[0], tuple(transformation)))
+
+    def digest(self, contours_only: bool = False):
+        pen = DigestPointStructurePen()
+        self.recording.replay(_ContoursOnlyPen(pen) if contours_only else pen)
+        return pen.getDigest()
+
+    def contour_stats(self) -> list[dict]:
+        """What `glyph_contour_stats` reads, from the recorded points."""
+        stats = []
+        for contour in self.contours:
+            types = tuple(kind for _x, _y, kind in contour if kind not in (None, "offcurve"))
+            stats.append(
+                {
+                    "on_curves": len(types),
+                    "off_curves": len(contour) - len(types),
+                    "types": types,
+                }
+            )
+        return stats
+
+
+def _direction(points) -> int:
+    """1 for counter-clockwise, -1 for clockwise, 0 for degenerate.
+
+    The sign of the area of the polygon through all its points, handles
+    included (the shoelace formula).
+    """
+    n = len(points)
+    if n < 3:
+        return 0
+    area = 0
+    for i in range(n):
+        x0, y0 = points[i][0], points[i][1]
+        x1, y1 = points[(i + 1) % n][0], points[(i + 1) % n][1]
+        area += x0 * y1 - x1 * y0
+    return 1 if area > 0 else -1 if area < 0 else 0
+
+
+def _is_closed(points) -> bool:
+    return bool(points) and points[0][2] != "move"
+
+
+def _hint(alignment) -> dict:
+    """What a fix needs: the reading's start in the points as drawn, and its way."""
+    return {"proposedStart": alignment.start, "reversed": alignment.reversed}
+
+
+def _realign_text(contour_hints: dict, reference: str, ci: int) -> str:
+    if len(contour_hints) == 1:
+        ((name, hint),) = contour_hints.items()
+        way = ", read backwards," if hint["reversed"] else ""
+        return (
+            f" In {name}, contour {ci} has the points of {reference} drawn from another "
+            f"start: starting at its point {hint['proposedStart']}{way} it matches. Nothing "
+            f"has to be redrawn; move the start point."
+        )
+    return (
+        f" In {len(contour_hints)} masters, contour {ci} has the points of {reference} drawn "
+        f"from another start (raw_data realign gives each one's start). Nothing has to be "
+        f"redrawn; move the start points."
+    )
+
+
+def _realign_text_all(hints: dict, reference: str) -> str:
+    count = sum(len(by_contour) for by_contour in hints.values())
+    return (
+        f" {count} contour(s) in {len(hints)} master(s) have the points of {reference} drawn "
+        f"from another start or the other way; read from the start in raw_data realign "
+        f"they match."
+    )
 
 
 class GlyphsChecker(BaseChecker):
@@ -365,7 +481,7 @@ class GlyphsChecker(BaseChecker):
 
             for i, (glyph_name, outline_in) in enumerate(glyphs_to_check):
                 try:
-                    yield from self._check_glyph(glyph_name, outline_in)
+                    yield from self._check_glyph(glyph_name, outline_in, default_source)
                 except Exception as e:
                     logger.warning(f"Error checking glyph {glyph_name}: {e}")
 
@@ -649,7 +765,7 @@ class GlyphsChecker(BaseChecker):
                 },
             )
 
-    def _check_glyph(self, glyph_name: str, sources=None) -> list[CheckResult]:
+    def _check_glyph(self, glyph_name: str, sources=None, default_source=None) -> list[CheckResult]:
         """
         Check a single glyph across the sources that draw it.
 
@@ -660,6 +776,8 @@ class GlyphsChecker(BaseChecker):
             glyph_name: Glyph to compare.
             sources: The masters to compare, defaulting to every loaded one.
                 Callers pass one interpolable slice at a time.
+            default_source: The slice's default master, the reference that a
+                contour's start point and direction are read against.
         """
         entry = self.entry
         if entry is None:
@@ -685,6 +803,8 @@ class GlyphsChecker(BaseChecker):
         empty_sources: list = []  # ... and sources that leave the glyph empty
 
         num_sources = 0
+        outlines: dict[str, _Outline] = {}  # source label -> its outline
+        reference = None  # the default master's label, when it draws the glyph
 
         for source in sources:
             # A layer master draws from its own layer; reading the UFO's
@@ -697,36 +817,36 @@ class GlyphsChecker(BaseChecker):
             source_name = self._label(source)
             all_source_names.append(source_name)
 
-            if len(glyph) == 0 and not glyph.components:
+            outline = _Outline(glyph)
+            outlines[source_name] = outline
+            if source is default_source:
+                reference = source_name
+            if not outline.contours and not outline.components:
                 empty_sources.append(source)
             else:
                 drawn_sources.append(source)
 
             # Get digest using DigestPointStructurePen
-            pen = DigestPointStructurePen()
-            glyph.drawPoints(pen)
-            digest = pen.getDigest()
+            digest = outline.digest()
 
             # Collect pattern with source names
             patterns[digest].append(source_name)
 
             # The same structure with component order left out, so that 4.19
             # can tell an order-only difference from a real one.
-            base_names = tuple(comp.baseGlyph for comp in glyph.components)
-            contours_pen = DigestPointStructurePen()
-            glyph.drawPoints(_ContoursOnlyPen(contours_pen))
-            unordered_patterns.add((contours_pen.getDigest(), tuple(sorted(base_names))))
-            if len(glyph) or base_names:
+            base_names = tuple(base for base, _transformation in outline.components)
+            unordered_patterns.add((outline.digest(contours_only=True), tuple(sorted(base_names))))
+            if outline.contours or base_names:
                 component_orders[base_names].append(source_name)
 
             # Count contours from the glyph, not from the digest: the
             # digest's shape is fontPens' business and it changed under us.
-            contour_count = len(glyph.contours)
+            contour_count = len(outline.contours)
             contour_count_sources[contour_count].append(source_name)
 
             # Collect components with sources
-            for comp in glyph.components:
-                component_sources[comp.baseGlyph].append(source_name)
+            for base in base_names:
+                component_sources[base].append(source_name)
 
             # Collect anchors with sources
             for anchor in glyph.anchors:
@@ -744,10 +864,10 @@ class GlyphsChecker(BaseChecker):
 
             # Parse contour stats for detailed checks (only if needed)
             if digest not in contour_stats:
-                contour_stats[digest] = glyph_contour_stats(glyph)
+                contour_stats[digest] = outline.contour_stats()
 
             # Collect contour directions
-            directions = tuple(self._get_contour_direction(c) for c in glyph.contours)
+            directions = tuple(_direction(points) for points in outline.contours)
             contour_directions.append((source_name, directions))
 
         if num_sources == 0:
@@ -857,6 +977,7 @@ class GlyphsChecker(BaseChecker):
         # 4.9: Incompatible glyph + detailed checks (4.3, 4.4, 4.5). When the
         # order of the components is all that differs, 4.19 has said it.
         order_only = order_differs and len(unordered_patterns) == 1
+        hints = self._realign_hints(outlines, reference) if len(patterns) > 1 else {}
         if len(patterns) > 1 and not order_only:
             # Build groups with pattern labels (pattern1, pattern2, etc.)
             pattern_groups = {
@@ -887,12 +1008,29 @@ class GlyphsChecker(BaseChecker):
                     location=location,
                     is_structural=False,
                     severity=SEVERITY_STRUCTURAL,
-                    details=details + "." + INCOMPATIBLE_CONSEQUENCE,
+                    details=details
+                    + "."
+                    + INCOMPATIBLE_CONSEQUENCE
+                    + (_realign_text_all(hints, reference) if hints else ""),
                     problem_type=GlyphProblemType.INCOMPATIBLE_GLYPH,
                     raw_data={
                         "glyphName": glyph_name,
                         "locationType": "groups",
                         "groups": pattern_groups,
+                        **(
+                            {
+                                "reference": reference,
+                                "realign": {
+                                    name: [
+                                        {"contour": ci, **_hint(alignment)}
+                                        for ci, alignment in sorted(by_contour.items())
+                                    ]
+                                    for name, by_contour in hints.items()
+                                },
+                            }
+                            if hints
+                            else {}
+                        ),
                     },
                 )
             )
@@ -974,6 +1112,25 @@ class GlyphsChecker(BaseChecker):
                     # Use simple labels for type groups
                     str_groups = {f"type{i + 1}": v for i, (_, v) in enumerate(groups.items())}
                     loc = format_groups_location(str_groups)
+                    raw = {
+                        "glyphName": glyph_name,
+                        "contourIndex": ci,
+                        "locationType": "groups",
+                        "groups": str_groups,
+                    }
+                    details = (
+                        f"Glyph '{glyph_name}' contour {ci} has different curve types."
+                        + INCOMPATIBLE_CONSEQUENCE
+                    )
+                    contour_hints = {
+                        name: _hint(by_contour[ci])
+                        for name, by_contour in hints.items()
+                        if ci in by_contour
+                    }
+                    if contour_hints:
+                        raw["reference"] = reference
+                        raw["realign"] = contour_hints
+                        details += _realign_text(contour_hints, reference, ci)
                     results.append(
                         self._make_result(
                             code=WRONG_CURVE_TYPE,
@@ -982,36 +1139,58 @@ class GlyphsChecker(BaseChecker):
                             location=loc,
                             is_structural=False,
                             severity=SEVERITY_STRUCTURAL,
-                            details=f"Glyph '{glyph_name}' contour {ci} has different curve types."
-                            + INCOMPATIBLE_CONSEQUENCE,
+                            details=details,
                             problem_type=GlyphProblemType.CURVE_TYPE_MISMATCH,
-                            raw_data={
-                                "glyphName": glyph_name,
-                                "contourIndex": ci,
-                                "locationType": "groups",
-                                "groups": str_groups,
-                            },
+                            raw_data=raw,
                         )
                     )
 
-        # 4.8: Wrong contour direction - group by direction per contour
+        # 4.8: Wrong contour direction - group by direction per contour.
+        # The sign of a contour's area is only a first guess: a contour that
+        # overlaps itself, running one way in some parts and the other way
+        # in others, has no single direction, and when the parts nearly
+        # cancel the sign is noise. Where the default master draws the same
+        # point structure, the guess is checked by lining the points up: a
+        # contour counts as reversed only when it reads best backwards.
         if len(contour_directions) > 1:
             dir_names = {1: "CCW", -1: "CW", 0: "flat"}
+            ref_dirs = dict(contour_directions).get(reference) if reference else None
 
             # Collect direction groups per contour
             direction_by_contour: dict[int, dict[int, list[str]]] = defaultdict(
                 lambda: defaultdict(list)
             )
+            realign_by_contour: dict[int, dict[str, dict]] = defaultdict(dict)
             for source_name, dirs in contour_directions:
                 for ci, d in enumerate(dirs):
-                    if d != 0:  # Skip flat contours
-                        direction_by_contour[ci][d].append(source_name)
+                    if d == 0:  # Skip flat contours
+                        continue
+                    if ref_dirs is not None and ci < len(ref_dirs) and ref_dirs[ci] not in (0, d):
+                        alignment = self._alignment(outlines, reference, source_name, ci)
+                        if alignment is not None:
+                            if not alignment.reversed:
+                                d = ref_dirs[ci]  # it only looked reversed
+                            else:
+                                realign_by_contour[ci][source_name] = {
+                                    "proposedStart": alignment.start,
+                                    "reversed": True,
+                                }
+                    direction_by_contour[ci][d].append(source_name)
 
             for ci, groups in direction_by_contour.items():
                 if len(groups) > 1:
                     str_groups = {dir_names.get(k, "?"): v for k, v in groups.items()}
                     loc = format_groups_location(str_groups)
                     dir_strs = " vs ".join(dir_names.get(k, "?") for k in sorted(groups.keys()))
+                    raw = {
+                        "glyphName": glyph_name,
+                        "contourIndex": ci,
+                        "locationType": "groups",
+                        "groups": str_groups,
+                    }
+                    if realign_by_contour.get(ci):
+                        raw["reference"] = reference
+                        raw["realign"] = realign_by_contour[ci]
 
                     results.append(
                         self._make_result(
@@ -1022,12 +1201,7 @@ class GlyphsChecker(BaseChecker):
                             is_structural=False,
                             details=f"Glyph '{glyph_name}' contour {ci} has different directions across sources",
                             problem_type=GlyphProblemType.CONTOUR_DIRECTION,
-                            raw_data={
-                                "glyphName": glyph_name,
-                                "contourIndex": ci,
-                                "locationType": "groups",
-                                "groups": str_groups,
-                            },
+                            raw_data=raw,
                         )
                     )
 
@@ -1068,6 +1242,49 @@ class GlyphsChecker(BaseChecker):
         results.extend(self._empty_glyph_results(glyph_name, drawn_sources, empty_sources))
 
         return results
+
+    @classmethod
+    def _realign_hints(cls, outlines, reference) -> dict[str, dict[int, object]]:
+        """Contours whose structure differs from the reference's only by where
+        they start or which way they run: master label -> contour -> Alignment.
+        """
+        if reference is None or reference not in outlines:
+            return {}
+        ref = outlines[reference]
+        hints: dict[str, dict[int, object]] = {}
+        for name, outline in outlines.items():
+            if name == reference:
+                continue
+            for ci, points in enumerate(outline.contours):
+                if ci >= len(ref.contours):
+                    break
+                ref_points = ref.contours[ci]
+                if [p[2] for p in points] == [p[2] for p in ref_points]:
+                    continue  # same structure: 4.15's business, not 4.5's
+                alignment = cls._alignment(outlines, reference, name, ci)
+                if alignment is not None and not alignment.is_identity:
+                    hints.setdefault(name, {})[ci] = alignment
+        return hints
+
+    @staticmethod
+    def _alignment(outlines, reference, source_name, ci):
+        """How contour `ci` of a master reads best against the reference master.
+
+        None when either contour is missing or open, or no reading of the
+        master's contour has the reference's point types.
+        """
+        if reference is None or source_name == reference:
+            return None
+        ref = outlines.get(reference)
+        target = outlines.get(source_name)
+        if ref is None or target is None:
+            return None
+        if ci >= len(ref.contours) or ci >= len(target.contours):
+            return None
+        ref_points, target_points = ref.contours[ci], target.contours[ci]
+        if not (_is_closed(ref_points) and _is_closed(target_points)):
+            return None
+        return align_contour(ref_points, target_points)
 
     def _find_default_font(self):
         """The default master's font, matched by path *and* layer.

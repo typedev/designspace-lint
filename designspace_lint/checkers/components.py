@@ -43,28 +43,34 @@ MISSING_COMPONENT_BASE = 25  # a component's base is in no master the build read
 OPEN_CONTOUR = 26  # a contour that is not closed
 
 
-def component_graph(layer: Any) -> dict[str, list[str]]:
+def component_graph(layer: Any, start: Iterable[str] | None = None) -> dict[str, list[str]]:
     """Glyph name -> the base glyphs of its components, for every composite.
 
-    defcon reads this from the glif files without loading a glyph
-    (`componentReferences`); any other layer is read glyph by glyph.
+    With `start`, only as far as those glyphs reach through their components.
+    Read from the glyphs themselves, through defcon when there is one: its
+    `componentReferences` re-reads the glif file of every glyph not loaded
+    yet, on every call, and the glyphs phase loads them all anyway.
     """
-    references = getattr(_naked(layer), "componentReferences", None)
-    if references is not None:
-        graph: dict[str, list[str]] = {}
+    source = _naked(layer)
+    names = set(layer.keys())
+    queue = sorted(names) if start is None else sorted(set(start) & names)
+    graph: dict[str, list[str]] = {}
+    seen = set(queue)
+    while queue:
+        name = queue.pop()
         try:
-            for base, users in references.items():
-                for user in users:
-                    graph.setdefault(user, []).append(base)
-        except Exception:  # pragma: no cover - defensive, fall through to the glyphs
-            graph = None
-        if graph is not None:
-            return {name: sorted(set(bases)) for name, bases in graph.items()}
-    graph = {}
-    for glyph in layer:
-        bases = [c.baseGlyph for c in getattr(glyph, "components", None) or ()]
-        if bases:
-            graph[glyph.name] = sorted(set(bases))
+            components = source[name].components
+        except Exception:  # pragma: no cover - defensive
+            continue
+        bases = sorted({c.baseGlyph for c in components or ()})
+        if not bases:
+            continue
+        graph[name] = bases
+        if start is not None:
+            for base in bases:
+                if base in names and base not in seen:
+                    seen.add(base)
+                    queue.append(base)
     return graph
 
 
@@ -214,7 +220,7 @@ def component_findings(
     locators = {"sourceName": source_name, "layerName": layer_name}
     severity = SEVERITY_STRUCTURAL if build_layer else SEVERITY_DESIGN
     wanted = set(glyphs) if glyphs is not None else None
-    graph = component_graph(layer)
+    graph = component_graph(layer, wanted)
     present = set(layer.keys()) if hasattr(layer, "keys") else {g.name for g in layer}
     available = present | set(fallback or ())
 

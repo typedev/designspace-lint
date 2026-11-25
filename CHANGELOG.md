@@ -24,6 +24,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     reported. `raw_data["missingBases"]`.
   - **4.26 OPEN_CONTOUR**, warning: every build closes an open contour with a
     straight line from its last point to its first. `raw_data["contours"]`.
+- **4.5 and 4.9 say when a contour only starts elsewhere.** When a master's
+  contour has the default master's points drawn from another start point, or
+  the other way round, its curve types differ (4.5, 4.9) and the masters as
+  drawn do not build, so both stay errors. Their `raw_data` now carries
+  `reference` (the default master's label) and `realign`: for 4.5, per master,
+  `{"proposedStart": k, "reversed": bool}`; for 4.9, per master, a list of
+  `{"contour": i, "proposedStart": k, "reversed": bool}`. `proposedStart`
+  indexes the target contour's points as drawn in the UFO; with `reversed`,
+  the contour reads k, k-1, k-2, ... The details name the start too.
+- **4.8 carries the same `reference` and `realign`** for a contour that runs
+  the other way.
+- `designspace_lint.contours`: `align_contour(reference, target)` and
+  `readings(...)`, the rule behind both, public so a host's fix and the check
+  agree. Of the readings of the target whose point types match the
+  reference's, the best is the one whose points lie closest, each contour
+  scaled into its own bounding box.
 - `checkers.components.component_findings(layer, ...)`, public like
   `unicode_findings`: the three checks for one layer, so a host checking a
   standalone UFO runs the same rules. `build_layer=False` reports a layer no
@@ -37,6 +53,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with "0.1 the construction checks stopped early: RecursionError" and lose
   every 4.20/4.21 finding; now a glyph whose components lead into a ring is
   left to 4.24, and `construction.component_y_min` returns None for it.
+- **4.8 no longer misfires on a contour that overlaps itself.** The sign of
+  the area through all its points was the whole test; a contour whose parts
+  run opposite ways and nearly cancel has no single direction, and one in a
+  large 4-axis designspace read "71 masters CW vs 1 CCW" while every part of
+  it ran the same way. Where the default master draws the same point
+  structure, a contour now counts as reversed only when its points line up
+  best read backwards (`contours.align_contour`).
 - **The point-correspondence phase compares only neighbouring masters**
   (4.14–4.17). Without scipy, fontTools' interpolatable compares each master
   with the one before it in the list, and the list was sorted by distance from
@@ -56,6 +79,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   glyph names are looked up once per run instead of on every glyph: fontParts
   lists every glyph name to test membership on each `font[name]`, and did so
   twice per lookup.
+- **The glyphs phase reads each glyph once per master**, through defcon when
+  the glyph has one under it, into a recording that the structure, contour
+  and direction checks all read from. fontParts wraps every contour and point
+  it hands out, and reading through it was most of the phase. A full run on a
+  large 4-axis designspace (84 masters) went from 46 s to 32 s, and to 69 s
+  from 95 s with `--interpolatable --construction`.
 - **The point-correspondence phase reads each glyph once per master**, into a
   recording it replays, instead of drawing it through fontParts on every
   comparison. With the neighbour tree above it runs faster than before
