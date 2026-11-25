@@ -79,7 +79,10 @@ def test_contours_in_another_order_are_reported():
         {"a": _glyph("a", left, right, small)},
         {"a": _glyph("a", right, left, small)},
     )
-    assert CONTOUR_ORDER in [r.code for r in _interpolation(entry)]
+    (order,) = [r for r in _interpolation(entry) if r.code == CONTOUR_ORDER]
+    # for each contour of Light, the contour of Bold that matches it
+    assert order.raw_data["masters"][0].startswith("Light")
+    assert order.raw_data["proposedOrder"] == [1, 0, 2]
 
 
 def test_the_phase_runs_only_when_asked_for():

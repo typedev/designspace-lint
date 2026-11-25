@@ -49,6 +49,8 @@ class ConstructionChecker(GlyphsChecker):
                 glyph_names &= self.only_glyphs
             ordered = sorted(glyph_names)
             for i, glyph_name in enumerate(ordered):
+                if self._cancel_requested():
+                    return
                 yield from self._check_composite(glyph_name, sources)
                 if self._on_glyph_progress:
                     self._on_glyph_progress(i + 1, len(ordered))

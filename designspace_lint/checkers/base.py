@@ -56,6 +56,13 @@ class BaseChecker(ABC):
     # Subclasses must set this
     CATEGORY: int = -1
 
+    #: Anything with ``is_set()``, set by the engine; the phases that walk the
+    #: glyphs poll it per glyph, so a cancel does not wait for the phase's end.
+    cancel: Any = None
+
+    def _cancel_requested(self) -> bool:
+        return self.cancel is not None and self.cancel.is_set()
+
     def __init__(
         self,
         entry: "DesignSpaceEntry | None" = None,

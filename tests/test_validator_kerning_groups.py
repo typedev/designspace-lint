@@ -147,6 +147,19 @@ def test_glyph_in_two_groups_of_the_same_side():
     assert results[0].is_structural is True
 
 
+def test_a_standalone_font_gets_the_same_rule():
+    """`group_overlap_findings` is what the designspace run calls per master."""
+    from designspace_lint.checkers.kerning import group_overlap_findings
+
+    groups = {"public.kern1.A": ["A", "Agrave"], "public.kern1.Alt": ["A"]}
+    (found,) = group_overlap_findings(groups, source_name="Font", location="Font.ufo")
+
+    assert (found.category, found.code) == (5, GLYPH_IN_TWO_KERN_GROUPS)
+    assert found.raw_data["sourceName"] == "Font"
+    assert found.raw_data["otherGroup"] == "public.kern1.A"
+    assert found.raw_data["groupName"] == "public.kern1.Alt"
+
+
 def test_the_same_glyph_on_both_sides_is_fine():
     entry = _entry(
         {

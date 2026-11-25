@@ -193,6 +193,8 @@ class InterpolationChecker(GlyphsChecker):
                 glyph_names = [name for name in glyph_names if name in self.only_glyphs]
             unchecked = []
             for i, glyph_name in enumerate(glyph_names):
+                if self._cancel_requested():
+                    return
                 members = tuple(
                     m for m, glyphset in enumerate(glyphsets) if glyphset.has(glyph_name)
                 )
@@ -273,6 +275,11 @@ class InterpolationChecker(GlyphsChecker):
             raw["contour"] = contour
 
         if kind == "contour_order":
+            # fontTools' matching: for each contour of master_1 (the reference
+            # of the pair), the contour of master_2 that matches it. Contours
+            # as interpolatable reads them: the glyph's own, then those of its
+            # components, decomposed.
+            raw["proposedOrder"] = [int(i) for i in problem.get("value_2", [])]
             return self._make_result(
                 code=CONTOUR_ORDER,
                 description=f"contours in a different order between {between}",

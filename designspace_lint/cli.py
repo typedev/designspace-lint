@@ -7,7 +7,8 @@
 Exit codes are the point of it: 0 when the designspace is clean, 1 when there
 are problems, 2 when the file could not be read at all. A build script can
 therefore gate on it without parsing anything, while a person gets one line per
-problem and `--json` when a machine wants the details.
+problem and `--json` when a machine wants the details: with `raw_data`, the
+same data a fixer acts on.
 """
 
 from __future__ import annotations
@@ -35,7 +36,15 @@ def _as_dict(problem) -> dict:
         "location": problem.location,
         "glyph": problem.glyph_name,
         "details": problem.details,
+        "raw_data": problem.raw_data,
     }
+
+
+def _jsonable(value):
+    """What json cannot write as is: sets as sorted lists, anything else as text."""
+    if isinstance(value, (set, frozenset)):
+        return sorted(value, key=str)
+    return str(value)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -73,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.json:
-        json.dump([_as_dict(p) for p in problems], sys.stdout, indent=2)
+        json.dump([_as_dict(p) for p in problems], sys.stdout, indent=2, default=_jsonable)
         sys.stdout.write("\n")
         return 1 if problems else 0
 

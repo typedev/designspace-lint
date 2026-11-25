@@ -22,7 +22,7 @@ Licensed under the Apache License, Version 2.0
 from __future__ import annotations
 
 import logging
-from typing import Iterator
+from typing import Iterable, Iterator, Mapping
 
 from ..kerning_data import safe_kerning
 from ..model import CATEGORY_KERNING, SEVERITY_DESIGN, SEVERITY_INFO, CheckResult
@@ -304,51 +304,78 @@ class KerningChecker(BaseChecker):
         )
 
     def _check_group_overlaps(self, sources) -> Iterator[CheckResult]:
-        """5,8: a glyph in two kerning groups of the same side.
-
-        ufo2ft builds one set of groups out of every source. When a glyph is
-        already in a side-1 (or side-2) group and another group of that side
-        claims it, the later group is **discarded whole** -- every pair written
-        against it stops applying. The UFO looks fine; only a log line marks
-        it.
-        """
+        """5,8 in every master: see `group_overlap_findings`."""
         for source in sources:
-            source_name = self._label(source)
-            for prefix, side in (("public.kern1.", "first"), ("public.kern2.", "second")):
-                seen: dict[str, str] = {}
-                groups = source.font.groups
-                for group_name in sorted(groups.keys()):
-                    if not group_name.startswith(prefix):
-                        continue
-                    for glyph_name in groups[group_name]:
-                        if glyph_name in seen:
-                            yield self._make_result(
-                                code=GLYPH_IN_TWO_KERN_GROUPS,
-                                description=(
-                                    f"'{glyph_name}' is in two {side}-side groups: "
-                                    f"{seen[glyph_name]} and {group_name}"
-                                ),
-                                location=source_name,
-                                glyph_name=glyph_name,
-                                group_name=group_name,
-                                is_structural=True,
-                                details=(
-                                    f"ufo2ft keeps '{seen[glyph_name]}' and discards "
-                                    f"'{group_name}' entirely, so every kerning pair written "
-                                    f"against '{group_name}' stops applying."
-                                ),
-                                raw_data={
-                                    "font": source_name,
-                                    "sourceName": self._designspace_name(source),
-                                    "glyphName": glyph_name,
-                                    "groupName": group_name,
-                                    "otherGroup": seen[glyph_name],
-                                    "side": side,
-                                },
-                            )
-                        else:
-                            seen[glyph_name] = group_name
+            yield from group_overlap_findings(
+                source.font.groups,
+                source_name=self._designspace_name(source),
+                location=self._label(source),
+            )
 
     def _find_default_source(self):
         """Find the default source, matched by path and layer."""
         return self._default_font_source()
+
+
+class _KerningResults(BaseChecker):
+    """Makes the results, so they carry category 5 like the rest of the phase."""
+
+    CATEGORY = CATEGORY_KERNING
+
+    def check(self) -> Iterator[CheckResult]:  # pragma: no cover - not a phase
+        return iter(())
+
+
+def group_overlap_findings(
+    groups: Mapping[str, Iterable[str]], *, source_name: str, location: str = ""
+) -> Iterator[CheckResult]:
+    """5.8 for one font: a glyph in two kerning groups of the same side.
+
+    ufo2ft builds one set of groups out of every source. When a glyph is
+    already in a side-1 (or side-2) group and another group of that side
+    claims it, the later group is **discarded whole** -- every pair written
+    against it stops applying. The UFO looks fine; only a log line marks it.
+
+    Public, like `unicode_findings`, so a host that checks a standalone UFO
+    runs the same rule the designspace run does.
+
+    Args:
+        groups: the font's groups (name -> member glyph names).
+        source_name: the `sourceName` locator.
+        location: the human-readable location of the findings (also given as
+            `raw_data["font"]`).
+    """
+    maker = _KerningResults()
+    for prefix, side in (("public.kern1.", "first"), ("public.kern2.", "second")):
+        seen: dict[str, str] = {}
+        for group_name in sorted(groups.keys()):
+            if not group_name.startswith(prefix):
+                continue
+            for glyph_name in groups[group_name]:
+                if glyph_name in seen:
+                    yield maker._make_result(
+                        code=GLYPH_IN_TWO_KERN_GROUPS,
+                        description=(
+                            f"'{glyph_name}' is in two {side}-side groups: "
+                            f"{seen[glyph_name]} and {group_name}"
+                        ),
+                        location=location,
+                        glyph_name=glyph_name,
+                        group_name=group_name,
+                        is_structural=True,
+                        details=(
+                            f"ufo2ft keeps '{seen[glyph_name]}' and discards "
+                            f"'{group_name}' entirely, so every kerning pair written "
+                            f"against '{group_name}' stops applying."
+                        ),
+                        raw_data={
+                            "font": location,
+                            "sourceName": source_name,
+                            "glyphName": glyph_name,
+                            "groupName": group_name,
+                            "otherGroup": seen[glyph_name],
+                            "side": side,
+                        },
+                    )
+                else:
+                    seen[glyph_name] = group_name

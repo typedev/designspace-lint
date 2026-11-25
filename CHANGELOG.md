@@ -40,6 +40,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   agree. Of the readings of the target whose point types match the
   reference's, the best is the one whose points lie closest, each contour
   scaled into its own bounding box.
+- **4.14 carries `proposedOrder`**: fontTools' matching, for each contour of
+  the pair's first master (`raw_data["masters"][0]`), the contour of the
+  second that matches it. Contours as interpolatable reads them: the glyph's
+  own, then its components', decomposed. It was only in the details text.
+- **`--json` writes `raw_data`** for every finding: contour indexes, proposed
+  start points, the masters of a finding's groups. Sets are written as
+  sorted lists.
+- `checkers.kerning.group_overlap_findings(groups, source_name=..., location=...)`:
+  5.8 for one font, public like `unicode_findings`, so a host that checks a
+  standalone UFO need not keep its own copy.
 - `checkers.components.component_findings(layer, ...)`, public like
   `unicode_findings`: the three checks for one layer, so a host checking a
   standalone UFO runs the same rules. `build_layer=False` reports a layer no
@@ -60,6 +70,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it ran the same way. Where the default master draws the same point
   structure, a contour now counts as reversed only when its points line up
   best read backwards (`contours.align_contour`).
+- **Progress and cancel reach inside every phase that walks the glyphs.** The
+  progress callback went to the glyphs phase only, and every other phase
+  counted as one unit, so the bar stood still through the point-correspondence
+  phase (about a minute on 84 masters) and then jumped. Now the glyphs,
+  interpolation and construction phases each count one unit per glyph and
+  report every glyph ("Checking point correspondence (12/980)"), and with
+  discrete axes the bar runs once over all slices instead of starting over.
+  The cancel flag, polled only between phases and findings, is now polled
+  per glyph too: a phase with nothing to report used to finish before a
+  cancel took effect.
 - **The point-correspondence phase compares only neighbouring masters**
   (4.14–4.17). Without scipy, fontTools' interpolatable compares each master
   with the one before it in the list, and the list was sorted by distance from

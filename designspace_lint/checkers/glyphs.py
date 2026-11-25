@@ -353,6 +353,8 @@ class GlyphsChecker(BaseChecker):
         skip_export = designspace_skip_export(self.doc)
         seen: set[tuple] = set()
         for source in entry.sources:
+            if self._cancel_requested():
+                return
             layer_name = source.resolve_layer_name(source.master_layer_name())
             key = (self._resolve_path(getattr(source, "path", None)), layer_name)
             if key in seen:
@@ -385,6 +387,8 @@ class GlyphsChecker(BaseChecker):
         default_keys = self._own_keys(default_source)
         seen: set[tuple] = set()
         for source in entry.sources:
+            if self._cancel_requested():
+                return
             layer_name = source.resolve_layer_name(source.master_layer_name())
             key = (self._resolve_path(getattr(source, "path", None)), layer_name)
             if key in seen:
@@ -467,6 +471,8 @@ class GlyphsChecker(BaseChecker):
 
             glyphs_to_check = []
             for glyph_name, present_in in sorted(present_by_glyph.items()):
+                if self._cancel_requested():
+                    return
                 if default_source not in present_in:
                     yield self._missing_in_default_result(glyph_name, present_in, default_source)
                     continue
@@ -480,6 +486,8 @@ class GlyphsChecker(BaseChecker):
             report_interval = max(1, total_glyphs // 100)  # Report every 1%
 
             for i, (glyph_name, outline_in) in enumerate(glyphs_to_check):
+                if self._cancel_requested():
+                    return
                 try:
                     yield from self._check_glyph(glyph_name, outline_in, default_source)
                 except Exception as e:

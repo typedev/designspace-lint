@@ -309,10 +309,37 @@ class Linter:
         return self._selected is None or phase_id in self._selected
 
     def _restrict(self, checker, phase_id: str):
-        """Hand a `glyphs=` restriction to the checkers it applies to."""
-        if checker is not None and self._glyphs is not None and phase_id in GLYPH_PHASES:
+        """Hand a `glyphs=` restriction to the checkers it applies to, and the
+        cancel flag to every checker (the glyph phases poll it per glyph)."""
+        if checker is None:
+            return checker
+        checker.cancel = self._cancel
+        if self._glyphs is not None and phase_id in GLYPH_PHASES:
             checker.only_glyphs = set(self._glyphs)
         return checker
+
+    def _units(self, phase_id: str, glyph_count: int) -> int:
+        """A phase's share of the progress bar: one per glyph for a glyph phase."""
+        return glyph_count if phase_id in GLYPH_PHASES else 1
+
+    @staticmethod
+    def _track_glyphs(checker, phase_id, on_progress, done, total, label, glyph_count) -> None:
+        """Have a glyph phase report each glyph, on the scale of the whole run.
+
+        The checker counts its own glyphs, which need not be the estimate the
+        total was made with; its share is scaled onto the estimate.
+        """
+        if on_progress is None or phase_id not in GLYPH_PHASES:
+            return
+        if not hasattr(checker, "_on_glyph_progress"):  # pragma: no cover - defensive
+            return
+        stem = label.rstrip(".")
+
+        def glyph_progress(checked, of, done=done):
+            share = checked / of if of else 1.0
+            on_progress(done + round(share * glyph_count), total, f"{stem} ({checked}/{of})")
+
+        checker._on_glyph_progress = glyph_progress
 
     def _run_checks(
         self,
@@ -349,11 +376,10 @@ class Linter:
         total_phases: int,
     ) -> Iterator[CheckResult]:
         """Run checks on a single designspace (no discrete axes)."""
-        # Estimate total work: other phases + glyphs
-        # Each non-glyph phase counts as 1 unit
-        # Glyphs phase: 1 unit per glyph
+        # Progress: one unit per phase, one per glyph for the phases that
+        # walk the glyphs.
         glyph_count = self._estimate_glyph_count()
-        total_work = (total_phases - 1) + glyph_count  # -1 because glyphs counted separately
+        total_work = sum(self._units(phase_id, glyph_count) for phase_id, _ in self._phases)
         current_work = 0
 
         for i, (phase_id, phase_name) in enumerate(self._phases):
@@ -370,51 +396,32 @@ class Linter:
             checker = self._get_checker(phase_id)
             if checker is None:
                 logger.debug(f"No checker for phase: {phase_id}")
-                current_work += 1 if phase_id != "glyphs" else glyph_count
+                current_work += self._units(phase_id, glyph_count)
                 continue
+            self._track_glyphs(
+                checker, phase_id, on_progress, current_work, total_work, phase_name, glyph_count
+            )
 
             # Run phase
             try:
-                if phase_id == "glyphs" and on_progress:
-                    # Special handling for glyphs - create checker with progress callback
-                    # `done_so_far` is bound now, not when the callback runs:
-                    # the loop keeps moving current_work, and a late-bound
-                    # closure would report progress from the wrong phase.
-                    def glyph_progress(checked, total, done_so_far=current_work):
-                        current = done_so_far + checked
-                        msg = f"Checking glyphs ({checked}/{total})"
-                        on_progress(current, total_work, msg)
+                for result in checker.check():
+                    if self._cancelled:
+                        return
+                    yield result
 
-                    glyphs_checker = self._restrict(
-                        self._checkers["glyphs"](
-                            entry=self._entry, path=self._path, on_glyph_progress=glyph_progress
-                        ),
-                        "glyphs",
-                    )
-                    for result in glyphs_checker.check():
-                        if self._cancelled:
-                            return
-                        yield result
-                        if result.is_structural:
-                            self._structural_problem_found = True
-                    current_work += glyph_count
-                else:
-                    for result in checker.check():
-                        if self._cancelled:
-                            return
-                        yield result
+                    # Track structural problems
+                    if result.is_structural:
+                        self._structural_problem_found = True
+                if self._cancelled:
+                    return
 
-                        # Track structural problems
-                        if result.is_structural:
-                            self._structural_problem_found = True
-
-                    current_work += 1
-                    if on_progress:
-                        on_progress(current_work, total_work, phase_name)
+                current_work += self._units(phase_id, glyph_count)
+                if on_progress:
+                    on_progress(current_work, total_work, phase_name)
 
             except Exception as e:
                 logger.warning(f"Phase {phase_id} failed: {e}")
-                current_work += 1 if phase_id != "glyphs" else glyph_count
+                current_work += self._units(phase_id, glyph_count)
                 yield phase_failed(phase_id, e)
 
             # Stop after structural problems in early phases
@@ -509,11 +516,15 @@ class Linter:
         num_splits = len(sub_docs)
         total_steps = len(doc_phases) + len(slice_phases) * num_splits
 
-        # Estimate total work for all splits
+        # Progress over the whole run: the document phases, then each slice's
+        # phases, one unit per glyph for the phases that walk the glyphs, so
+        # the bar runs once from start to end instead of once per slice.
         glyph_count = self._estimate_glyph_count()
-        work_per_split = (len(slice_phases) - 1) + glyph_count
-        total_work = work_per_split * num_splits
-        current_work = 0
+        work_per_split = sum(self._units(phase_id, glyph_count) for phase_id, _ in slice_phases)
+        current_work = len(doc_phases)
+        total_work = current_work + work_per_split * num_splits
+        if on_progress:
+            on_progress(current_work, total_work, "")
 
         for split_idx, (discrete_loc, sub_doc) in enumerate(sub_docs):
             # Check for cancellation
@@ -545,8 +556,12 @@ class Linter:
                 # Get checker for sub-doc
                 checker = self._get_checker_for_subdoc(phase_id, sub_doc)
                 if checker is None:
-                    current_work += 1 if phase_id != "glyphs" else glyph_count
+                    current_work += self._units(phase_id, glyph_count)
                     continue
+                label = f"{phase_name} [{discrete_label}]" if discrete_label else phase_name
+                self._track_glyphs(
+                    checker, phase_id, on_progress, current_work, total_work, label, glyph_count
+                )
 
                 # Run phase
                 try:
@@ -559,17 +574,17 @@ class Linter:
                         if result.is_structural:
                             self._structural_problem_found = True
 
+                    if self._cancelled:
+                        return
+
                     # Update progress
-                    current_work += 1 if phase_id != "glyphs" else glyph_count
+                    current_work += self._units(phase_id, glyph_count)
                     if on_progress:
-                        label = phase_name
-                        if discrete_label:
-                            label = f"{phase_name} [{discrete_label}]"
                         on_progress(current_work, total_work, label)
 
                 except Exception as e:
                     logger.warning(f"Phase {phase_id} failed for {discrete_label}: {e}")
-                    current_work += 1 if phase_id != "glyphs" else glyph_count
+                    current_work += self._units(phase_id, glyph_count)
                     failure = phase_failed(phase_id, e)
                     self._tag_with_slice(failure, discrete_loc, discrete_label)
                     yield failure
