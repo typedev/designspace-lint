@@ -10,7 +10,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Any, Iterator
 
 from ..model import CheckResult
 
@@ -80,6 +80,7 @@ class BaseChecker(ABC):
         self._path = path
         self._doc_loaded = False
         self._label_memo: dict[int, str] = {}
+        self._layer_memo: dict[int, tuple[Any, frozenset[str]]] = {}
 
     @property
     def entry(self) -> "DesignSpaceEntry | None":
@@ -322,33 +323,43 @@ class BaseChecker(ABC):
             return bool(source.master_layer_name())
         return bool(getattr(source, "layerName", None))
 
-    @classmethod
-    def _own_keys(cls, source) -> set[str]:
+    def _own_layer(self, source) -> tuple[Any, frozenset[str]]:
+        """The layer this master draws from and its glyph names, looked up once.
+
+        Every lookup through fontParts is costly: `font[name]` resolves the
+        default layer and lists every glyph name to test membership, twice
+        when preceded by `name in font`. Done once per master per run, a
+        glyph lookup is the layer's `[name]` and a set test, about a quarter
+        of the time.
+        """
+        key = id(source)
+        memo = self._layer_memo.get(key)
+        if memo is None:
+            try:
+                layer = source.get_layer() if self._is_layer_source(source) else None
+                if layer is None:
+                    layer = source.font.defaultLayer
+                memo = (layer, frozenset(layer.keys()))
+            except Exception:  # pragma: no cover - defensive, a missing layer is 2.x's
+                memo = (None, frozenset())
+            self._layer_memo[key] = memo
+        return memo
+
+    def _own_keys(self, source) -> frozenset[str]:
         """Glyph names this master actually draws, without a layer fallback."""
         if source is None:
-            return set()
-        try:
-            if cls._is_layer_source(source):
-                return set(source.get_layer().keys())
-            return set(source.font.keys())
-        except Exception:  # pragma: no cover - defensive
-            return set()
+            return frozenset()
+        return self._own_layer(source)[1]
 
-    @classmethod
-    def _own_glyph(cls, source, name: str):
-        """The glyph this master draws, or None -- never another layer's.
-
-        A master that is a whole UFO goes straight to the font: building a
-        layer view for it means asking fontParts for the default layer's name
-        on every glyph of every master, which is most of the cost of a run.
-        """
+    def _own_glyph(self, source, name: str):
+        """The glyph this master draws, or None -- never another layer's."""
         if source is None:
             return None
+        layer, keys = self._own_layer(source)
+        if name not in keys:
+            return None
         try:
-            if cls._is_layer_source(source):
-                return source.own_glyph(name)
-            font = source.font
-            return font[name] if name in font else None
+            return layer[name]
         except Exception:  # pragma: no cover - defensive
             return None
 

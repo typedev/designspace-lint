@@ -34,6 +34,7 @@ from typing import Iterator
 
 from fontTools.pens.filterPen import FilterPen
 from fontTools.pens.pointPen import PointToSegmentPen
+from fontTools.pens.recordingPen import RecordingPointPen
 
 from ..model import SEVERITY_INFO, CheckResult, GlyphProblemType
 from .glyphs import GlyphsChecker
@@ -79,6 +80,7 @@ class _SkipMissingComponents(FilterPen):
 
     def addComponent(self, glyphName, transformation, **kwargs):
         if self._glyphset.has(glyphName):
+            self._glyphset.note_base(glyphName)
             self._outPen.addComponent(glyphName, transformation, **kwargs)
 
 
@@ -87,15 +89,16 @@ class _Glyph:
 
     `glifLib.Glyph.draw` goes through `drawPoints` with an implied closing
     line; drawing a fontParts glyph the same way makes the comparison the one
-    interpolatable's own command line makes.
+    interpolatable's own command line makes. The points come from a recording
+    of the glyph, made once (see `_GlyphSet`).
     """
 
-    def __init__(self, glyph, glyphset):
-        self._glyph = glyph
+    def __init__(self, recording: RecordingPointPen, glyphset):
+        self._recording = recording
         self._glyphset = glyphset
 
     def draw(self, pen, outputImpliedClosingLine=False):
-        self._glyph.drawPoints(
+        self._recording.replay(
             PointToSegmentPen(
                 _SkipMissingComponents(pen, self._glyphset),
                 outputImpliedClosingLine=outputImpliedClosingLine,
@@ -108,12 +111,21 @@ class _GlyphSet:
 
     Components are looked up here too, so a master resolves its components
     from its own layer, as the compiled master would.
+
+    Each glyph is read from the font and drawn once, into a recording that is
+    replayed after that. interpolatable asks for a glyph several times per
+    comparison, a master takes part in one comparison per neighbour, and
+    reading through fontParts was most of the phase's time. `release` drops
+    the recordings after each glyph, except those of component bases, which
+    many composites draw.
     """
 
     def __init__(self, checker: GlyphsChecker, source):
         self._checker = checker
         self._source = source
         self._keys = None
+        self._recordings: dict[str, RecordingPointPen] = {}
+        self._bases: set[str] = set()
 
     def keys(self):
         return list(self._own())
@@ -127,8 +139,26 @@ class _GlyphSet:
         return self._keys
 
     def __getitem__(self, name):
-        glyph = self._checker._own_glyph(self._source, name)
-        return _Glyph(glyph, self) if glyph is not None else None
+        if name not in self._own():
+            return None
+        recording = self._recordings.get(name)
+        if recording is None:
+            glyph = self._checker._own_glyph(self._source, name)
+            if glyph is None:
+                return None
+            recording = RecordingPointPen()
+            glyph.drawPoints(recording)
+            self._recordings[name] = recording
+        return _Glyph(recording, self)
+
+    def note_base(self, name: str) -> None:
+        self._bases.add(name)
+
+    def release(self) -> None:
+        """Forget the glyphs read for the last test; keep the component bases."""
+        self._recordings = {
+            name: recording for name, recording in self._recordings.items() if name in self._bases
+        }
 
 
 class InterpolationChecker(GlyphsChecker):
@@ -149,9 +179,10 @@ class InterpolationChecker(GlyphsChecker):
             if default_source is None:
                 continue
 
-            ordered, locations = self._ordered_masters(sub_doc, pairs, default_source)
-            names = [self._label(source) for source in ordered]
-            glyphsets = [_GlyphSet(self, source) for source in ordered]
+            masters, locations = self._masters(sub_doc, pairs, default_source)
+            names = [self._label(source) for source in masters]
+            glyphsets = [_GlyphSet(self, source) for source in masters]
+            trees: dict[tuple[int, ...], list[tuple[int, int]]] = {}
             try:
                 upem = default_source.font.info.unitsPerEm or 1000
             except Exception:  # pragma: no cover - defensive
@@ -162,27 +193,34 @@ class InterpolationChecker(GlyphsChecker):
                 glyph_names = [name for name in glyph_names if name in self.only_glyphs]
             unchecked = []
             for i, glyph_name in enumerate(glyph_names):
-                # One glyph per call: an error escaping the generator ends it,
-                # and without a solver interpolatable raises on any glyph of
-                # more than six contours.
+                members = tuple(
+                    m for m, glyphset in enumerate(glyphsets) if glyphset.has(glyph_name)
+                )
+                if members not in trees:
+                    trees[members] = _neighbour_pairs(locations, members)
+                # One glyph per call, and one call per pair of neighbours: an
+                # error escaping the generator ends it, and without a solver
+                # interpolatable raises on any glyph of more than six contours.
                 try:
-                    problems = list(
-                        test_gen(
-                            glyphsets,
+                    problems = []
+                    for m1, m2 in trees[members]:
+                        problems += test_gen(
+                            [glyphsets[m1], glyphsets[m2]],
                             glyphs=[glyph_name],
-                            names=names,
+                            names=[names[m1], names[m2]],
                             ignore_missing=True,
-                            locations=locations,
                             tolerance=TOLERANCE,
                             upem=upem,
                         )
-                    )
                 except Exception as exc:
                     if not has_solver and "munkres" in str(exc):
                         unchecked.append(glyph_name)
                     else:
                         logger.warning(f"interpolatable failed on {glyph_name}: {exc}")
                     continue
+                finally:
+                    for glyphset in glyphsets:
+                        glyphset.release()
                 results = [self._result(glyph_name, problem) for _name, problem in problems]
                 yield from _merge_pairs([r for r in results if r is not None])
                 if self._on_glyph_progress:
@@ -205,13 +243,8 @@ class InterpolationChecker(GlyphsChecker):
                     raw_data={"glyphs": unchecked},
                 )
 
-    def _ordered_masters(self, sub_doc, pairs, default_source) -> tuple[list, list | None]:
-        """Masters with the default first, then by distance from it.
-
-        Without scipy interpolatable compares each master with the one before
-        it, so this order is what makes those comparisons between neighbours.
-        With scipy it builds its own tree from the normalized locations.
-        """
+    def _masters(self, sub_doc, pairs, default_source) -> tuple[list, list[dict]]:
+        """The masters, the default first, with their normalized locations."""
         located = []
         for descriptor, source in pairs:
             try:
@@ -220,18 +253,9 @@ class InterpolationChecker(GlyphsChecker):
                 loc = {}
             located.append((source, loc))
         if not located:
-            return [default_source], None
-
-        def distance(item):
-            source, loc = item
-            if source is default_source:
-                return (0, -1.0)
-            return (1, sum(v * v for v in loc.values()))
-
-        located.sort(key=distance)
-        ordered = [source for source, _loc in located]
-        locations = [loc for _source, loc in located]
-        return ordered, locations
+            return [default_source], [{}]
+        located.sort(key=lambda item: item[0] is not default_source)
+        return [source for source, _loc in located], [loc for _source, loc in located]
 
     def _result(self, glyph_name: str, problem: dict) -> CheckResult | None:
         kind = problem.get("type")
@@ -340,3 +364,47 @@ def _merge_pairs(results: list[CheckResult]) -> list[CheckResult]:
             first.description += f" (and {len(group) - 1} more master pair(s))"
         merged.append(first)
     return merged
+
+
+def _neighbour_pairs(locations: list[dict], members: tuple[int, ...]) -> list[tuple[int, int]]:
+    """Which masters to compare: the edges of a minimum spanning tree.
+
+    The tree joins the members (indices into `locations`, the masters that
+    have the glyph) by squared distance between their normalized locations,
+    an axis a location leaves out counting as 0 -- what interpolatable builds
+    with scipy. Each edge comes back as (parent, child), walked breadth first
+    from the first member, the default. Without scipy interpolatable compares
+    each master with the one before it in the list instead; in a list sorted
+    by distance from the default, the two ends of a slant axis come next to
+    each other and are compared, although no instance lies between them.
+
+    Built by Prim's algorithm, so it needs no scipy. Ties go to the lower
+    index; two masters at one location are joined at distance 0.
+    """
+    if len(members) < 2:
+        return []
+    axes = sorted({axis for m in members for axis in locations[m]})
+    vectors = {m: [locations[m].get(axis, 0.0) for axis in axes] for m in members}
+
+    def distance(a, b):
+        return sum((x - y) ** 2 for x, y in zip(vectors[a], vectors[b], strict=True))
+
+    root = members[0]
+    nearest = {m: (distance(root, m), root) for m in members[1:]}
+    children: dict[int, list[int]] = {m: [] for m in members}
+    while nearest:
+        child = min(nearest, key=lambda m: (nearest[m][0], nearest[m][1], m))
+        _d, parent = nearest.pop(child)
+        children[parent].append(child)
+        for m, (d, _p) in nearest.items():
+            d_new = distance(child, m)
+            if d_new < d:
+                nearest[m] = (d_new, child)
+
+    edges = []
+    queue = [root]
+    for parent in queue:
+        for child in sorted(children[parent]):
+            edges.append((parent, child))
+            queue.append(child)
+    return edges

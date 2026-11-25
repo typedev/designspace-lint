@@ -189,3 +189,41 @@ def test_a_smooth_point_that_turns_into_a_corner_halfway_is_noted():
 
     assert len(results) == 1
     assert results[0].raw_data["point"] == 4
+
+
+def test_the_two_ends_of_an_axis_are_not_compared_with_each_other():
+    """Only neighbours are compared: no instance lies between -20 and +20 degrees.
+
+    Sorted by distance from the default, the two ends of a slant axis used to
+    come next to each other, and without scipy interpolatable compares each
+    master with the one before it. Here the start point moved in one end
+    only, so the finding names that end and the default, never both ends.
+    """
+    rotated = SQUARE[1:] + SQUARE[:1]
+    entry = build_designspace(
+        axes=[{"name": "Slant", "tag": "slnt", "minimum": -20, "default": 0, "maximum": 20}],
+        sources=[
+            {"name": "Upright", "location": {"Slant": 0}, "glyphs": {"a": _glyph("a", SQUARE)}},
+            {"name": "Back", "location": {"Slant": -20}, "glyphs": {"a": _glyph("a", rotated)}},
+            {"name": "Forward", "location": {"Slant": 20}, "glyphs": {"a": _glyph("a", SQUARE)}},
+        ],
+    )
+    results = [r for r in _interpolation(entry) if r.code == WRONG_START_POINT]
+
+    assert len(results) == 1
+    (pair,) = results[0].raw_data["pairs"]
+    assert any("Upright" in master for master in pair)
+    assert any("Back" in master for master in pair)
+
+
+def test_neighbours_are_the_edges_of_a_spanning_tree():
+    from designspace_lint.checkers.interpolation import _neighbour_pairs
+
+    # default, the two ends of one axis, and a corner next to one of them
+    locations = [{}, {"slnt": -1.0}, {"slnt": 1.0}, {"slnt": 1.0, "wght": 1.0}]
+    assert _neighbour_pairs(locations, (0, 1, 2, 3)) == [(0, 1), (0, 2), (2, 3)]
+    # a master without the glyph is left out, and the tree joins the others
+    assert _neighbour_pairs(locations, (0, 1, 3)) == [(0, 1), (0, 3)]
+    # two masters at one location are still compared
+    assert _neighbour_pairs([{}, {}], (0, 1)) == [(0, 1)]
+    assert _neighbour_pairs(locations, (0,)) == []
