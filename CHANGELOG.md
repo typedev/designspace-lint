@@ -5,6 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **The component graph of each master, and its open contours** (category 4,
+  group `components`, reported by the glyphs phase in every master's own
+  layer). Each was built with ufo2ft 3.9, static and variable, TrueType and
+  CFF:
+  - **4.24 COMPONENT_RING**, error: glyphs that use each other as components,
+    or one that uses itself. Every build stops with RecursionError, in
+    whichever master the ring is. One finding per ring per master;
+    `raw_data["links"]` maps each glyph of the ring to its bases in it.
+  - **4.25 MISSING_COMPONENT_BASE**, error: a component whose base the build
+    cannot find. CFF and CFF2 stop (MissingComponentError); TrueType drops the
+    component with only a log line. A base that a non-default master lacks
+    but the default master has is sparse there, not missing, and is not
+    reported. `raw_data["missingBases"]`.
+  - **4.26 OPEN_CONTOUR**, warning: every build closes an open contour with a
+    straight line from its last point to its first. `raw_data["contours"]`.
+- `checkers.components.component_findings(layer, ...)`, public like
+  `unicode_findings`: the three checks for one layer, so a host checking a
+  standalone UFO runs the same rules. `build_layer=False` reports a layer no
+  build reads (a background) at warning severity and skips its open contours.
+  Also public: `component_graph`, `component_rings`, `reaching_rings`,
+  `open_contour_indices`.
+
+### Fixed
+
+- **A component ring no longer stops the construction phase.** It used to end
+  with "0.1 the construction checks stopped early: RecursionError" and lose
+  every 4.20/4.21 finding; now a glyph whose components lead into a ring is
+  left to 4.24, and `construction.component_y_min` returns None for it.
+- **The point-correspondence phase compares only neighbouring masters**
+  (4.14–4.17). Without scipy, fontTools' interpolatable compares each master
+  with the one before it in the list, and the list was sorted by distance from
+  the default: the two ends of a slant axis came next to each other, with no
+  instance between them, and their near mirror images read as contours in
+  another order, start points moved and contours thinning out. The phase now
+  builds the tree scipy would (a minimum spanning tree of the normalized
+  locations, in pure Python) and runs interpolatable on each of its edges. On
+  a large 4-axis designspace (84 masters) the findings went from 323 to 25,
+  the same glyphs, codes and contours as with scipy. scipy is not needed for
+  it; the `interpolatable` extra (munkres) still covers contour matching in
+  glyphs of more than six contours.
+
+### Performance
+
+- **Glyph lookups are about four times cheaper.** Each master's layer and
+  glyph names are looked up once per run instead of on every glyph: fontParts
+  lists every glyph name to test membership on each `font[name]`, and did so
+  twice per lookup.
+- **The point-correspondence phase reads each glyph once per master**, into a
+  recording it replays, instead of drawing it through fontParts on every
+  comparison. With the neighbour tree above it runs faster than before
+  despite comparing more pairs, and faster than fontTools with scipy.
+
+### For consumers
+
+- New codes 4.24, 4.25, 4.26 in `CODES` (group `components`, "Components and
+  contours"), with locators `glyphName`, `sourceName`, `layerName`, and for
+  4.24 also `glyphNames`.
+- 4.14–4.17 now name different master pairs (`raw_data["masters"]`,
+  `["pairs"]`): neighbours in the designspace. Where several neighbours are
+  equally close the pair can differ from scipy's choice.
+- `BaseChecker._own_glyph` and `_own_keys` are instance methods now, and
+  `_own_keys` returns a frozenset (private API, mentioned for anyone who
+  subclassed a checker).
+
 ## [0.9.0] - 2026-11-23
 
 Glyph compatibility findings that a build does not survive are now errors.

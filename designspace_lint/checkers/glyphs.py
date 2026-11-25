@@ -43,6 +43,7 @@ from ..model import (
     GlyphProblemType,
 )
 from .base import BaseChecker
+from .components import component_findings
 from .unicodes import designspace_skip_export, unicode_findings
 
 logger = logging.getLogger(__name__)
@@ -221,6 +222,7 @@ class GlyphsChecker(BaseChecker):
     def check(self) -> Iterator[CheckResult]:
         """Run all glyph compatibility checks."""
         yield from self._check_unicodes(glyph_names=self.only_glyphs)
+        yield from self._check_components(glyph_names=self.only_glyphs)
         yield from self._check_slices(glyph_names=self.only_glyphs)
 
     def _check_unicodes(self, glyph_names: set[str] | None) -> Iterator[CheckResult]:
@@ -252,6 +254,36 @@ class GlyphsChecker(BaseChecker):
                 glyphs=glyph_names,
                 glyph_order=safe_glyph_order(source.font),
                 skip_export=skip_export,
+            )
+
+    def _check_components(self, glyph_names: set[str] | None) -> Iterator[CheckResult]:
+        """4.24-4.26 in each master on its own: the layer its build reads.
+
+        A non-default master takes the glyphs it lacks from the default one
+        (they are sparse there), so those count as present for 4.25.
+        """
+        entry = self.entry
+        if entry is None:
+            return
+        default_source = self._default_font_source()
+        default_keys = self._own_keys(default_source)
+        seen: set[tuple] = set()
+        for source in entry.sources:
+            layer_name = source.resolve_layer_name(source.master_layer_name())
+            key = (self._resolve_path(getattr(source, "path", None)), layer_name)
+            if key in seen:
+                continue
+            seen.add(key)
+            layer, _keys = self._own_layer(source)
+            if layer is None:  # pragma: no cover - a missing layer is 2.x's finding
+                continue
+            yield from component_findings(
+                layer,
+                source_name=self._designspace_name(source),
+                layer_name=layer_name,
+                location=self._label(source),
+                glyphs=glyph_names,
+                fallback=() if source is default_source else default_keys,
             )
 
     def _slices(self) -> list[tuple[dict, object, list, list]]:

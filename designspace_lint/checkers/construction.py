@@ -13,6 +13,9 @@ Codes (category 4):
 - 4.20: components out of the expected order (warning)
 - 4.21: components with no unicode, ordered as marks (information)
 
+A glyph whose components lead into a ring (4.24) is left out: it cannot be
+measured, and the ring costs only the findings about its own glyphs.
+
 Only on request (`--construction`).
 """
 
@@ -22,6 +25,7 @@ from typing import Iterator
 
 from ..construction import canonical_component_order
 from ..model import SEVERITY_DESIGN, SEVERITY_INFO, CheckResult, GlyphProblemType
+from .components import component_graph, component_rings, reaching_rings
 from .glyphs import GlyphsChecker
 
 COMPONENT_ORDER_CANONICAL = 20
@@ -30,6 +34,8 @@ COMPONENT_ROLE_UNKNOWN = 21
 
 class ConstructionChecker(GlyphsChecker):
     """Checks each master's composites against the expected component order."""
+
+    _ring_memo: dict[int, set[str]] | None = None
 
     def check(self) -> Iterator[CheckResult]:
         entry = self.entry
@@ -47,6 +53,18 @@ class ConstructionChecker(GlyphsChecker):
                 if self._on_glyph_progress:
                     self._on_glyph_progress(i + 1, len(ordered))
 
+    def _in_rings(self, source) -> set[str]:
+        """The glyphs of this master whose components lead into a ring."""
+        if self._ring_memo is None:
+            self._ring_memo = {}
+        memo = self._ring_memo
+        key = id(source)
+        if key not in memo:
+            layer, _keys = self._own_layer(source)
+            graph = component_graph(layer) if layer is not None else {}
+            memo[key] = reaching_rings(graph, component_rings(graph))
+        return memo[key]
+
     def _layers(self, source):
         """Where a master's unicodes are read, and where its outlines are drawn."""
         font = source.font
@@ -63,6 +81,8 @@ class ConstructionChecker(GlyphsChecker):
             glyph = self._own_glyph(source, glyph_name)
             if glyph is None or len(glyph.components) < 2:
                 continue
+            if glyph_name in self._in_rings(source):
+                continue  # 4.24 reports it; its components cannot be measured
             font, layer = self._layers(source)
             order, glyph_notes = canonical_component_order(glyph, font, layer)
             names = [component.baseGlyph for component in glyph.components]

@@ -79,6 +79,7 @@ GROUPS = {
     "interpolation": "Point correspondence",
     "construction": "Composite construction",
     "unicodes": "Unicodes",
+    "components": "Components and contours",
     "kerning": "Kerning",
     "fontinfo": "Font info",
     "rules": "Rules",
@@ -187,6 +188,9 @@ _TABLE = [
     (4, 21, "COMPONENT_ROLE_UNKNOWN", "Component placed without a unicode", "construction", INFO, ("glyphName",), "construction"),
     (4, 22, "DUPLICATE_UNICODE", "Codepoint given to several glyphs", "unicodes", ERR, ("glyphName", "glyphNames", "codepoint", "sourceName", "layerName")),
     (4, 23, "MULTIPLE_UNICODES", "Glyph with several codepoints", "unicodes", INFO, ("glyphName", "codepoints", "sourceName", "layerName")),
+    (4, 24, "COMPONENT_RING", "Components in a ring", "components", (ERR, WARN), ("glyphName", "glyphNames", "sourceName", "layerName")),
+    (4, 25, "MISSING_COMPONENT_BASE", "Component of a missing glyph", "components", (ERR, WARN), ("glyphName", "sourceName", "layerName")),
+    (4, 26, "OPEN_CONTOUR", "Open contour", "components", WARN, ("glyphName", "sourceName", "layerName")),
     # --- 5 Kerning ---
     (5, 0, "NO_KERNING_IN_SOURCE", "Master without kerning", "kerning", WARN, ("sourceName",)),
     (5, 1, "NO_KERNING_IN_DEFAULT", "Default without kerning", "kerning", WARN, ("sourceName",)),

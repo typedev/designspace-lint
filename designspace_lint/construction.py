@@ -95,29 +95,47 @@ def component_role(font, base_name: str) -> tuple[str, int, str]:
     return ACCENT, 0, NO_UNICODE
 
 
+class _Ring(Exception):
+    """A component that leads back to a glyph being drawn."""
+
+
 class _Drawable:
     """A glyph drawn through its point pen, for the segment pens fontTools has."""
 
-    def __init__(self, glyph):
+    def __init__(self, name, glyph, glyph_set):
+        self._name = name
         self._glyph = glyph
+        self._glyph_set = glyph_set
 
     def draw(self, pen):
-        self._glyph.drawPoints(PointToSegmentPen(pen))
+        drawing = self._glyph_set.drawing
+        if self._name in drawing:
+            raise _Ring(self._name)
+        drawing.add(self._name)
+        try:
+            self._glyph.drawPoints(PointToSegmentPen(pen))
+        finally:
+            drawing.discard(self._name)
 
 
 class _LayerGlyphSet:
     def __init__(self, layer):
         self._layer = layer
+        self.drawing: set[str] = set()
 
     def __contains__(self, name):
         return name in self._layer
 
     def __getitem__(self, name):
-        return _Drawable(self._layer[name])
+        return _Drawable(name, self._layer[name], self)
 
 
 def component_y_min(component, layer) -> float | None:
-    """The bottom of a component as placed: transformed, nested components drawn."""
+    """The bottom of a component as placed: transformed, nested components drawn.
+
+    None when there is nothing to measure: the base or a nested base is
+    missing, or the components lead back into themselves (4.24).
+    """
     base_name = component.baseGlyph
     if base_name not in layer:
         return None
@@ -125,7 +143,7 @@ def component_y_min(component, layer) -> float | None:
     bounds_pen = BoundsPen(glyph_set)
     try:
         glyph_set[base_name].draw(TransformPen(bounds_pen, tuple(component.transformation)))
-    except KeyError:  # a nested component whose base is missing
+    except (KeyError, _Ring):
         return None
     return bounds_pen.bounds[1] if bounds_pen.bounds else None
 
