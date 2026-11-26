@@ -42,6 +42,7 @@ CODE_MODULES = {
     "checkers/unicodes.py": 4,
     "checkers/components.py": 4,
     "checkers/topology.py": 4,
+    "checkers/direction.py": 4,
     "checkers/kerning.py": 5,
     "checkers/fontinfo.py": 6,
     "checkers/rules.py": 7,
@@ -49,7 +50,7 @@ CODE_MODULES = {
     "checkers/glyphorder.py": 9,
     "checkers/labels.py": 10,
 }
-NOT_CODES = {"TOLERANCE", "EPSILON", "MIN_AREA_THRESHOLD", "_LISTED", "_KEPT_WEIGHTS"}
+NOT_CODES = {"TOLERANCE", "EPSILON", "MIN_AREA_THRESHOLD", "_LISTED", "_KEPT_WEIGHTS", "_VOTERS"}
 
 
 def _constants(path: Path) -> dict[str, int]:

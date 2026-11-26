@@ -349,6 +349,24 @@ class GlyphsChecker(BaseChecker):
         yield from self._check_unicodes(glyph_names=self.only_glyphs)
         yield from self._check_components(glyph_names=self.only_glyphs)
         yield from self._check_slices(glyph_names=self.only_glyphs)
+        yield from self._check_directions(glyph_names=self.only_glyphs)
+
+    def _check_directions(self, glyph_names: set[str] | None) -> Iterator[CheckResult]:
+        """4.29-4.31 per slice, judged in its default master (`checkers/direction.py`).
+
+        4.31 is about the whole master, so a run scoped to some glyphs leaves
+        it out; the convention it decides still applies.
+        """
+        from .direction import DirectionChecks
+
+        if self.entry is None or not self.entry.sources:
+            return
+        for _discrete_loc, sub_doc, sources, _pairs in self._slices():
+            default_source = self._default_font_source(sub_doc, sources)
+            if default_source is None:
+                continue
+            checks = DirectionChecks(self, sources, default_source)
+            yield from checks.run(glyph_names, whole_master=glyph_names is None)
 
     def _check_unicodes(self, glyph_names: set[str] | None) -> Iterator[CheckResult]:
         """4.22/4.23 in each master on its own, one master being enough.

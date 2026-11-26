@@ -47,6 +47,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Font-Rover's own scan alone took 102 s. On GoogleSansFlex (657 masters,
     6 axes) a default run takes 87 s, with `--topology` 207 s and 4 % more
     memory.
+- **Contour direction, judged in each glyph** (group `direction`, in the
+  glyphs phase of every run). 4.8 compares the masters with one another;
+  these say whether they are right, which they can all be wrong about at
+  once. Renderers fill by the nonzero rule, so a counter is a hole because
+  it runs against its outer contour, and overlapping ink stays ink only where
+  it runs the same way. The convention is PostScript's for both formats:
+  ufo2ft 3.9 writes a CFF font as drawn and reverses a TrueType one itself
+  (`reverseDirection`, fontmake `--keep-direction`). Built first with a C and
+  a cedilla drawn the other way: the overlap has winding 0 in variable
+  TrueType and CFF2 fonts and in static ones that keep their overlaps, and a
+  CFF build that removes overlaps bakes the hole into the outline (a
+  TrueType one happens to fix it, uniting the cedilla's own contour).
+  - **4.30 CONTOUR_DIRECTION**, warning: a contour of the glyph runs against
+    the convention. Its role comes from how many contours it lies entirely
+    inside, components' included, crossing none of their edges: an outer
+    contour or an island is ink, a counter a hole. A bar across a stem or a
+    slash through an O crosses it, so it is ink. `consequence`:
+    "filledCounter" (a counter running like the contour it lies in),
+    "cutsInk" (with the holes per master: area, a point inside, bbox), or
+    "againstConvention" (it looks as meant, but a TrueType build turns it
+    the wrong way; FontBakery's outline_direction warns). Two contours that
+    cross inside one contour and run the same way are reported as a pair
+    (`ambiguous`): one of them is reversed, or two counters overlap. A
+    contour that crosses itself is not judged. Roles are decided in the
+    default master, the holes measured in every master.
+  - **4.29 PARTS_CANCEL**, warning: a component runs the wrong way in its
+    composite and cuts a hole where it overlaps: its base glyph is reversed
+    (`cause: "baseReversed"`, `reverse` lists the base's contours) or it is
+    mirrored there (`"mirrored"`, with the determinant per master). One
+    finding per composite and component, with the holes per master and the
+    path down nested composites. For a reversed base, `usedBy` says what
+    reversing it does to every composite that draws it: `fixes`,
+    `unaffected`, `breaks` (where it is mirrored, or where it is a knockout).
+  - **4.31 TRUETYPE_DIRECTION**, warning: the default master is drawn in
+    TrueType's direction (most of its glyphs run their largest contour
+    clockwise). Said once; 4.29 and 4.30 then follow that direction, so they
+    name only the glyphs that differ. Left out of runs scoped to some glyphs.
+  - A part that lies entirely inside another's ink and runs against it is a
+    knockout, a white digit in a black circle, and drawn so on purpose: no
+    hole is reported, and reversing the outer part alone would fill it,
+    which `usedBy` says ("breaks", reason "knockout"). GoogleSansFlex's
+    black circled digits are drawn this way; its only finding is 4.30 on the
+    circle, against the convention, with its nine knockouts. The large 4-axis
+    designspace has none. The checks cost under a second on either.
+- **`designspace_lint.direction`**, the rule as a public module, so that a
+  fix and the check cannot disagree: `expected_directions(glyph, layer,
+  convention="postscript")` gives `{contour index: 1 (counter-clockwise),
+  -1 (clockwise) or None}` (None: the rule cannot say), with
+  `contour_roles`, `crossing_pairs`, `component_pieces`, `lost_ink`,
+  `flatten`, `signed_area` and `read_outline` underneath.
 - **`designspace_lint.topology`**, the rule as a public module: `GlyphMasters`
   (the same fields as Font-Rover's), `BuriedPointChecker` (`.at(location)`
   for one location, `.wandering()`), `buried_points_surfacing`,
@@ -57,6 +107,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### For consumers
 
 - `CodeInfo.topology_only`, like `interpolatable_only`.
+- New group `direction` (4.29-4.31). New `raw_data` keys, in `RAW_KEYS`:
+  `componentIndex` (a 4.29 locator, with `baseGlyph`), `componentPath`,
+  `cause`, `holes`, `determinant`, `reverse`, `usedBy`, `convention`,
+  `clockwiseGlyphs`, `votedGlyphs`; `contours` carries another meaning for
+  4.30, which its text gives.
 - New `raw_data` keys, in `RAW_KEYS`: `points`, `normalizedLocation`,
   `correspondence`. `location` and `tolerance` carry another meaning for
   4.27/4.28, which their text gives: user values, and units.
