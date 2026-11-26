@@ -47,6 +47,20 @@ def _jsonable(value):
     return str(value)
 
 
+def _axes_between(value: str):
+    if value == "all":
+        return None
+    if value == "auto":
+        return "auto"
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a number, all or auto, not {value!r}") from None
+    if number < 0:
+        raise argparse.ArgumentTypeError("expected a number of axes, 0 or more")
+    return number
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="designspace-lint",
@@ -79,6 +93,15 @@ def main(argv: list[str] | None = None) -> int:
         metavar="UNITS",
         help="Units a buried point may come out and still count as on the edge (default 1)",
     )
+    parser.add_argument(
+        "--topology-axes-between",
+        type=_axes_between,
+        default="auto",
+        metavar="N|all|auto",
+        help="How many axes sit between master values at once in the --topology samples: "
+        "all (the whole product), a number, or auto (all while that stays small, 2 above; "
+        "the default)",
+    )
     args = parser.parse_args(argv)
 
     from . import lint_path
@@ -90,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
             construction=args.construction,
             topology=args.topology,
             topology_tolerance=args.topology_tolerance,
+            topology_axes_between=args.topology_axes_between,
         )
     except (FileNotFoundError, ImportError) as exc:
         print(f"designspace-lint: {exc}", file=sys.stderr)

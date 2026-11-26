@@ -19,11 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   varLib's model puts the instances: over the masters that draw it (the
   sub-model a sparse master gets; a non-default master with an empty glyph
   counts as leaving it out, as varLib's gvar does), per axis at the masters'
-  values, the ends and the default, and the quarters between them, with at
-  most two axes between those values at once. The whole product grows as a
-  power of the axes (541 125 locations per glyph on 6-axis GoogleSansFlex,
-  against 64 000), and on both families measured it found no point the two
-  axes at a time missed; the worst depth it reports is within 4 units.
+  values, the ends and the default, and the quarters between them, every
+  combination over the axes. The whole product grows as a power of the
+  axes: 28 917 locations per glyph on the 4-axis designspace below, 541 125
+  on 6-axis GoogleSansFlex. Above 50 000 (`topology.AUTO_LIMIT`) at most two
+  axes sit between master values at once, 64 000 locations there; on both
+  families that found every point the whole product did, with the worst
+  depth within 4 units, but a point that comes out only where three axes are
+  halfway at once would go unseen. `topology_axes_between`
+  (`--topology-axes-between N|all|auto`, default "auto") chooses, and
+  `raw_data["axesBetween"]` says what a glyph was sampled with.
   - **4.27 BURIED_POINT_SURFACES**, warning: a point that one master hides at
     least, and that no master around a location leaves outside, comes out of
     the ink there. One finding per glyph; `raw_data["points"]` gives each
@@ -41,12 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `topology_tolerance` (`--topology-tolerance`, default 1 unit): how far a
     point may come out and still count as on the edge.
   - On a large 4-axis designspace (84 masters) it finds exactly Font-Rover's
-    57 points in 36 glyphs, and one point more in 4.28, in a glyph some full
-    masters leave out: varLib builds it from the others, Font-Rover's
-    interpolator does not. A default run takes 34 s, with `--topology` 69 s;
-    Font-Rover's own scan alone took 102 s. On GoogleSansFlex (657 masters,
-    6 axes) a default run takes 87 s, with `--topology` 207 s and 4 % more
-    memory.
+    57 points in 36 glyphs, to the hundredth of a unit, and one point more in
+    4.28, in a glyph some full masters leave out: varLib builds it from the
+    others, Font-Rover's interpolator does not. A default run takes 34 s,
+    with `--topology` 83 s (69 s with two axes at a time); Font-Rover's own
+    scan alone took 102 s. On GoogleSansFlex (657 masters, 6 axes) a default
+    run takes 87 s, with `--topology` 207 s and 4 % more memory.
 - **Contour direction, judged in each glyph** (group `direction`, in the
   glyphs phase of every run). 4.8 compares the masters with one another;
   these say whether they are right, which they can all be wrong about at
@@ -100,7 +105,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`designspace_lint.topology`**, the rule as a public module: `GlyphMasters`
   (the same fields as Font-Rover's), `BuriedPointChecker` (`.at(location)`
   for one location, `.wandering()`), `buried_points_surfacing`,
-  `sample_locations`, `point_at`, `point_tags`, and `master_scalars_at`, the
+  `sample_locations` and `resolve_axes_between` (what "auto" comes to for a
+  glyph), `point_at`, `point_tags`, and `master_scalars_at`, the
   masters' weights at many locations at once (fontTools' `getMasterScalars`,
   over arrays).
 
@@ -113,7 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `clockwiseGlyphs`, `votedGlyphs`; `contours` carries another meaning for
   4.30, which its text gives.
 - New `raw_data` keys, in `RAW_KEYS`: `points`, `normalizedLocation`,
-  `correspondence`. `location` and `tolerance` carry another meaning for
+  `correspondence`, `axesBetween`. `location` and `tolerance` carry another meaning for
   4.27/4.28, which their text gives: user values, and units.
 - Font-Rover: 4.27/4.28 are its 4.104/4.105, with the same rule, results and
   severities. Its own copies can go, and `GlyphMasters` can be passed to

@@ -89,6 +89,7 @@ def iter_lint(
     glyphs=None,
     topology=False,
     topology_tolerance=None,
+    topology_axes_between="auto",
 ):
     """Yield problems one at a time, as they are found.
 
@@ -113,6 +114,10 @@ def iter_lint(
             ``designspace-lint[topology]``.
         topology_tolerance: units a buried point may come out and still count
             as on the edge (default 1; 0 for any deviation).
+        topology_axes_between: how the outlines are sampled: "auto" (the whole
+            product of the per-axis values while it stays small, at most two
+            axes between master values at once above that), None (the whole
+            product), or an int.
 
     Yields:
         :class:`CheckResult`, in phase order.
@@ -126,6 +131,7 @@ def iter_lint(
         glyphs=glyphs,
         topology=topology,
         topology_tolerance=topology_tolerance,
+        topology_axes_between=topology_axes_between,
     )
     yield from linter.run(on_phase=on_phase, on_progress=on_progress)
 
@@ -142,6 +148,7 @@ def lint(
     glyphs=None,
     topology=False,
     topology_tolerance=None,
+    topology_axes_between="auto",
 ) -> list[CheckResult]:
     """Every problem in a designspace whose fonts are already open."""
     return list(
@@ -156,6 +163,7 @@ def lint(
             glyphs=glyphs,
             topology=topology,
             topology_tolerance=topology_tolerance,
+            topology_axes_between=topology_axes_between,
         )
     )
 
@@ -172,6 +180,7 @@ def lint_path(
     glyphs=None,
     topology=False,
     topology_tolerance=None,
+    topology_axes_between="auto",
 ) -> list[CheckResult]:
     """Open a .designspace file and check it.
 
@@ -189,6 +198,7 @@ def lint_path(
         glyphs=glyphs,
         topology=topology,
         topology_tolerance=topology_tolerance,
+        topology_axes_between=topology_axes_between,
     )
 
 

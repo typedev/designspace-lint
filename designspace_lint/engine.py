@@ -132,6 +132,7 @@ class Linter:
         glyphs: "list[str] | None" = None,
         topology: bool = False,
         topology_tolerance: float | None = None,
+        topology_axes_between: int | str | None = "auto",
     ):
         """
         Args:
@@ -159,6 +160,11 @@ class Linter:
             topology_tolerance: units a buried point may come out and still
                 count as on the edge (default 1; 0 reports any deviation
                 the measurement can tell).
+            topology_axes_between: how the outlines are sampled: "auto" (the
+                whole product of the per-axis values up to
+                ``topology.AUTO_LIMIT`` locations per glyph, at most two axes
+                between master values at once above it), None for the whole
+                product always, or an int for at most that many axes at once.
         """
         self._entry = designspace
         self._path = path or (designspace.path if designspace else None)
@@ -184,6 +190,7 @@ class Linter:
             after = next(p for p in ("construction", "interpolation", "glyphs") if p in ids)
             self._phases.insert(ids.index(after) + 1, TOPOLOGY_PHASE)
         self._topology_tolerance = topology_tolerance
+        self._topology_axes_between = topology_axes_between
 
         self._selected: set[str] | None = None
         if phases is not None:
@@ -344,6 +351,7 @@ class Linter:
         checker.cancel = self._cancel
         if phase_id == "topology":
             checker.tolerance = self._topology_tolerance
+            checker.axes_between = self._topology_axes_between
         if self._glyphs is not None and phase_id in GLYPH_PHASES:
             checker.only_glyphs = set(self._glyphs)
         return checker

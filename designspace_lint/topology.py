@@ -46,14 +46,16 @@ Definitions (all in font units):
 
 Where to look (`sample_locations`): per axis, the masters' values, the axis
 ends and the default (the grid), plus the quarters between consecutive
-values; every combination over the axes in which at most two axes sit
-between grid values at once. Between two masters on an edge at different
-fractions of it a point leaves the edge quadratically, most near the middle,
-which is why the in-between values matter more than the masters. The whole
-product grows as the quarters' count to the power of the axes: 541 125
-locations per glyph on a 6-axis family, against 64 000 with two axes at a
-time, which found every point the whole product did, on that family and on
-a 4-axis one of 84 masters (the worst depth within 4 units).
+values, and every combination over the axes. Between two masters on an edge
+at different fractions of it a point leaves the edge quadratically, most
+near the middle, which is why the in-between values matter more than the
+masters. The whole product grows as the quarters' count to the power of the
+axes: 28 917 locations per glyph on a 4-axis family of 84 masters, 541 125
+on a 6-axis one. Above `AUTO_LIMIT` locations (``axes_between="auto"``, the
+default) at most two axes sit between grid values at once, 64 000 on that
+6-axis family: on both families that found every point the whole product
+did, but a point can come out only where three axes are halfway at once,
+and the worst depth it reports can be lower (by up to 4 units there).
 
 The glyph's own contours only: components are not decomposed. Open contours
 are measured as closed (that is how a compiler closes them). The outline is
@@ -79,6 +81,8 @@ from typing import Any, Sequence
 import numpy as np
 
 __all__ = [
+    "AUTO",
+    "AUTO_LIMIT",
     "AXES_BETWEEN",
     "DEFAULT_TOLERANCE",
     "PRECISION",
@@ -94,6 +98,7 @@ __all__ = [
     "master_scalars_at",
     "point_at",
     "point_tags",
+    "resolve_axes_between",
     "sample_locations",
 ]
 
@@ -554,19 +559,19 @@ def _ray_hit(start: np.ndarray, direction: np.ndarray, a: np.ndarray, b: np.ndar
 # =============================================================================
 
 
-#: How many axes `sample_locations` puts between grid values at once.
+#: How many axes `sample_locations` puts between grid values at once, when
+#: the whole product is too large.
 AXES_BETWEEN = 2
 
+#: ``axes_between="auto"``: the whole product up to this many locations per
+#: glyph, `AXES_BETWEEN` above it.
+AUTO_LIMIT = 50_000
 
-def sample_locations(
-    masters: GlyphMasters, quarters: bool = True, axes_between: int | None = AXES_BETWEEN
-) -> list[dict[str, float]]:
-    """Normalized locations to check a glyph at (see the module docstring).
+AUTO = "auto"
 
-    ``quarters``: the quarters between grid values, or only the midpoints.
-    ``axes_between``: at most this many axes between grid values at once;
-    None for the whole product.
-    """
+
+def _grid(masters: GlyphMasters, quarters: bool):
+    """(axis names, grid values per axis, values between them per axis)."""
     axis_names = list(masters.model.axisOrder or [])
     locations = [dict(loc) for loc in masters.model.origLocations]
     for loc in locations:
@@ -588,6 +593,35 @@ def sample_locations(
         between.append(
             [a + f * (b - a) for a, b in zip(values, values[1:], strict=False) for f in steps]
         )
+    return axis_names, grid, between
+
+
+def resolve_axes_between(
+    masters: GlyphMasters, axes_between: int | str | None = AUTO, quarters: bool = True
+) -> int | None:
+    """What ``axes_between`` comes to for this glyph: an int, or None for the whole product.
+
+    "auto" is the whole product when it has at most `AUTO_LIMIT` locations,
+    `AXES_BETWEEN` otherwise.
+    """
+    if axes_between != AUTO:
+        return axes_between
+    _names, grid, between = _grid(masters, quarters)
+    whole = math.prod(len(g) + len(b) for g, b in zip(grid, between, strict=True))
+    return None if whole <= AUTO_LIMIT else AXES_BETWEEN
+
+
+def sample_locations(
+    masters: GlyphMasters, quarters: bool = True, axes_between: int | str | None = AUTO
+) -> list[dict[str, float]]:
+    """Normalized locations to check a glyph at (see the module docstring).
+
+    ``quarters``: the quarters between grid values, or only the midpoints.
+    ``axes_between``: at most this many axes between grid values at once;
+    None for the whole product; "auto" (`resolve_axes_between`).
+    """
+    axes_between = resolve_axes_between(masters, axes_between, quarters)
+    axis_names, grid, between = _grid(masters, quarters)
     count = len(axis_names)
     limit = count if axes_between is None else min(axes_between, count)
     found = []

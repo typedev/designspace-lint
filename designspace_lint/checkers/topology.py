@@ -58,6 +58,8 @@ class TopologyChecker(GlyphsChecker):
 
     #: Units a point may come out and still count as on the edge; set by the engine.
     tolerance: float | None = None
+    #: `topology.sample_locations`'s ``axes_between``; set by the engine.
+    axes_between: int | str | None = "auto"
 
     def check(self) -> Iterator[CheckResult]:
         from fontTools.varLib import models
@@ -187,10 +189,11 @@ class TopologyChecker(GlyphsChecker):
             glyph_masters = topology.GlyphMasters(
                 glyph_name, (), sub_model, np.zeros((len(masters_of), 0, 2)), [], [], supports
             )
-            locations = topology.sample_locations(glyph_masters)
+            used = topology.resolve_axes_between(glyph_masters, self.axes_between)
+            locations = topology.sample_locations(glyph_masters, axes_between=used)
             weights = topology.master_scalars_at(sub_model, locations)
-            sampled[key] = (sub_model, masters_of, locations, weights)
-        sub_model, masters_of, locations, weights = sampled[key]
+            sampled[key] = (sub_model, masters_of, locations, weights, used)
+        sub_model, masters_of, locations, weights, used = sampled[key]
         glyph_masters = topology.GlyphMasters(
             name=glyph_name,
             sources=tuple(names[m] for m in masters_of),
@@ -214,14 +217,18 @@ class TopologyChecker(GlyphsChecker):
 
         found = correspondence.problems(glyph_name)
         if surfacing:
-            yield self._surfacing_result(glyph_name, surfacing, tolerance, user_of, found)
+            result = self._surfacing_result(glyph_name, surfacing, tolerance, user_of, found)
+            result.raw_data["axesBetween"] = used
+            yield result
         if wandering:
             location_of = {
                 names[m]: user_of(sub_model.origLocations[k]) for k, m in enumerate(masters_of)
             }
-            yield self._wandering_result(
+            result = self._wandering_result(
                 glyph_name, wandering, tolerance, labels, location_of, found
             )
+            result.raw_data["axesBetween"] = used
+            yield result
 
     @staticmethod
     def _user_converter(axes, supports):

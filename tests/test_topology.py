@@ -310,10 +310,59 @@ def test_at_most_two_axes_sit_between_masters_at_once():
         {name: (0, 0, 1) for name in axes},
     )
     whole = topology.sample_locations(masters, axes_between=None)
-    two = topology.sample_locations(masters)
+    two = topology.sample_locations(masters, axes_between=2)
     assert len(whole) == 5**3  # 0, the quarters, 1 on each axis
     # 2^3 corners, 3·3·2^2 with one axis between, 3·3^2·2 with two
     assert len(two) == 8 + 36 + 54
     key = lambda loc: tuple(loc[name] for name in axes)  # noqa: E731
     assert {key(loc) for loc in two} <= {key(loc) for loc in whole}
     assert all(sum(loc[name] not in (0.0, 1.0) for name in axes) <= 2 for loc in two)
+
+
+def test_auto_takes_the_whole_product_while_it_stays_small(monkeypatch):
+    from fontTools.varLib.models import VariationModel
+
+    axes = ["A", "B", "C"]
+    masters = topology.GlyphMasters(
+        "x",
+        (),
+        VariationModel([{}, {"A": 1}, {"B": 1}, {"C": 1}], axisOrder=axes),
+        np.zeros((4, 0, 2)),
+        [],
+        [],
+        {name: (0, 0, 1) for name in axes},
+    )
+    assert topology.resolve_axes_between(masters) is None  # 125 locations
+    assert len(topology.sample_locations(masters)) == 5**3
+    monkeypatch.setattr(topology, "AUTO_LIMIT", 100)
+    assert topology.resolve_axes_between(masters) == topology.AXES_BETWEEN
+    assert len(topology.sample_locations(masters)) == 8 + 36 + 54
+    assert topology.resolve_axes_between(masters, 1) == 1
+    assert topology.resolve_axes_between(masters, None) is None
+
+
+def test_the_findings_say_how_the_outlines_were_sampled():
+    entry = _entry(("Light", 0, LIGHT), ("Bold", 1000, BOLD))
+    (whole,) = _found(entry)
+    assert whole.raw_data["axesBetween"] is None  # one axis: the whole product is small
+    (one,) = _found(entry, topology_axes_between=1)
+    assert one.raw_data["axesBetween"] == 1
+    # no axis between master values: only the masters are looked at, where it hides
+    assert _found(entry, topology_axes_between=0) == []
+
+
+def test_the_command_line_takes_the_sampling(monkeypatch, capsys):
+    entry = _entry(("Light", 0, LIGHT), ("Bold", 1000, BOLD))
+    seen = {}
+
+    def fake(path, **kwargs):
+        seen.update(kwargs)
+        return lint(entry, **kwargs)
+
+    monkeypatch.setattr("designspace_lint.lint_path", fake)
+    for flag, value in (("all", None), ("2", 2), ("auto", "auto")):
+        cli.main(["x.designspace", "--topology", "--json", "--topology-axes-between", flag])
+        assert seen["topology_axes_between"] == value
+    capsys.readouterr()
+    with pytest.raises(SystemExit):
+        cli.main(["x.designspace", "--topology-axes-between", "many"])
