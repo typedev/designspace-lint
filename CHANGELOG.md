@@ -52,6 +52,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     with `--topology` 83 s (69 s with two axes at a time); Font-Rover's own
     scan alone took 102 s. On GoogleSansFlex (657 masters, 6 axes) a default
     run takes 87 s, with `--topology` 207 s and 4 % more memory.
+- **Segments that turn over and curves that loop between masters**
+  (designspace-lint#2, parts 1 and 2; in the `--topology` phase).
+  - **4.32 SEGMENT_TURNS_OVER**, warning: the vector from one point to the
+    next reverses between masters, so on the way the two points meet and the
+    outline has a cusp or a loop: a handle turned through its on-curve point,
+    or two handles swapped. Exact, without a fine grid: the model's scalars
+    break only at the masters' values, so every point moves straight along
+    an edge between them and bilinearly over a face of two axes. Along an
+    edge it is reported when it reverses and comes within 1/40 of its change
+    per normalized unit (#2's 90° between neighbouring samples of a 41-value
+    grid); over a face, when it is zero somewhere inside (a full turn around
+    it, which no edge need show). A zero inside three or more axes lies on a
+    line that reaches the faces. Vectors shorter than a unit in a master are
+    left out. `raw_data["segments"]`: contour, the pair's points, kind
+    ("handle", "betweenHandles", "line"), where it is shortest.
+  - **4.33 CURVE_LOOPS**, warning: a cubic curve crosses itself at a sampled
+    location, tested exactly (B(t1) = B(t2) solved for t1 + t2 and t1·t2;
+    agrees with a polyline test on random curves), not inferred from the
+    handles, which can cross without a loop. Sampled as 4.27 is, each point
+    blended from its cell's corners, which the model makes exact.
+    `raw_data["curves"]` names the masters that loop already. Quadratic
+    curves are left out (one cannot loop).
+  - Built on #2's own experiment in a copy of MutatorSans: the clean font
+    has neither; with BoldWide's S given two swapped handles and its D a
+    handle turned through its point, 4.32 names both, between BoldCondensed
+    and BoldWide, and 4.33 nothing (#2 found the S does not loop). On the
+    84-master designspace: 4.32 in 12 glyphs (7 whose points do not
+    correspond, said in `correspondence`; the counters of 6 and 9, which
+    loop in two masters already; three short lines that reverse), 4.33 in 4,
+    all in masters already. The phase takes the same time as before.
 - **Contour direction, judged in each glyph** (group `direction`, in the
   glyphs phase of every run). 4.8 compares the masters with one another;
   these say whether they are right, which they can all be wrong about at
@@ -106,7 +136,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (the same fields as Font-Rover's), `BuriedPointChecker` (`.at(location)`
   for one location, `.wandering()`), `buried_points_surfacing`,
   `sample_locations` and `resolve_axes_between` (what "auto" comes to for a
-  glyph), `point_at`, `point_tags`, and `master_scalars_at`, the
+  glyph), `segment_turnovers`, `curve_loops` and `Sampling` (the grid and
+  samples, shared by glyphs of the same masters), `point_at`, `point_tags`,
+  and `master_scalars_at`, the
   masters' weights at many locations at once (fontTools' `getMasterScalars`,
   over arrays).
 
@@ -119,7 +151,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `clockwiseGlyphs`, `votedGlyphs`; `contours` carries another meaning for
   4.30, which its text gives.
 - New `raw_data` keys, in `RAW_KEYS`: `points`, `normalizedLocation`,
-  `correspondence`, `axesBetween`. `location` and `tolerance` carry another meaning for
+  `correspondence`, `axesBetween`, `segments`, `curves`. `location` and `tolerance` carry another meaning for
   4.27/4.28, which their text gives: user values, and units.
 - Font-Rover: 4.27/4.28 are its 4.104/4.105, with the same rule, results and
   severities. Its own copies can go, and `GlyphMasters` can be passed to

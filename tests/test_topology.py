@@ -366,3 +366,146 @@ def test_the_command_line_takes_the_sampling(monkeypatch, capsys):
     capsys.readouterr()
     with pytest.raises(SystemExit):
         cli.main(["x.designspace", "--topology-axes-between", "many"])
+
+
+# --- designspace-lint#2: segments that turn over, curves that loop -----------
+
+from designspace_lint.checkers.topology import CURVE_LOOPS, SEGMENT_TURNS_OVER  # noqa: E402
+from fakes import FakeContour, FakePoint  # noqa: E402
+
+
+def _bowl(h1, h2, name="D"):
+    """A stem and a bowl drawn as one cubic: (0,0) (0,700) h1 h2, back to the start."""
+    points = [
+        FakePoint(0, 0, "curve"),
+        FakePoint(0, 700, "line"),
+        FakePoint(*h1, "offcurve"),
+        FakePoint(*h2, "offcurve"),
+    ]
+    return FakeGlyph(name, contours=[FakeContour(points)])
+
+
+def _two(light, bold):
+    return _entry(("Light", 0, light), ("Bold", 1000, bold))
+
+
+def _codes(entry, code):
+    return [r for r in lint(entry, topology=True, phases=["topology"]) if r.code == code]
+
+
+def test_a_clean_bowl_neither_turns_over_nor_loops():
+    entry = _two(_bowl((400, 700), (400, 0)), _bowl((600, 750), (600, -50)))
+    assert _codes(entry, SEGMENT_TURNS_OVER) == []
+    assert _codes(entry, CURVE_LOOPS) == []
+
+
+def test_a_handle_turned_through_its_point_turns_over():
+    # in Bold the first handle points back, behind the stem's top
+    (finding,) = _codes(
+        _two(_bowl((400, 700), (400, 0)), _bowl((-400, 700), (400, 0))), SEGMENT_TURNS_OVER
+    )
+    (segment,) = [s for s in finding.raw_data["segments"] if s["kind"] == "handle"]
+    assert (segment["contour"], segment["point"], segment["nextPoint"]) == (0, 1, 2)
+    assert 0 < segment["normalizedLocation"]["Weight"] < 1
+    assert effective_severity(finding) == SEVERITY_DESIGN
+
+
+def test_two_handles_swapped_turn_the_span_between_them_over():
+    (finding,) = _codes(
+        _two(_bowl((400, 700), (400, 0)), _bowl((400, 0), (400, 700))), SEGMENT_TURNS_OVER
+    )
+    kinds = {s["kind"] for s in finding.raw_data["segments"]}
+    assert "betweenHandles" in kinds
+
+
+def test_a_curve_that_crosses_itself_loops():
+    # crossed handles alone do not loop; these reach out and back past each other
+    assert _codes(_two(_bowl((400, 700), (400, 0)), _bowl((700, 0), (700, 700))), CURVE_LOOPS) == []
+    looping = _bowl((900, -300), (900, 1000))
+    (finding,) = _codes(_two(_bowl((400, 700), (400, 0)), looping), CURVE_LOOPS)
+    (curve,) = finding.raw_data["curves"]
+    assert (curve["contour"], curve["point"]) == (0, 1)
+    assert curve["mastersLooping"] == ["Bold"]
+    assert 0 < curve["looping"] <= curve["checked"]
+    assert finding.raw_data["axesBetween"] is None
+
+
+def test_a_full_turn_inside_a_face_is_seen_though_no_edge_shows_it():
+    # the vector of the first two points at the four corners: right, up, left,
+    # down -- a quarter turn along each edge, a full turn around the face
+    corners = {(0, 0): (100, 0), (1000, 0): (0, 100), (1000, 1000): (-100, 0), (0, 1000): (0, -100)}
+    axes = [
+        {"name": "Weight", "tag": "wght", "minimum": 0, "default": 0, "maximum": 1000},
+        {"name": "Width", "tag": "wdth", "minimum": 0, "default": 0, "maximum": 1000},
+    ]
+    sources = []
+    for (w, x), (dx, dy) in corners.items():
+        glyph = FakeGlyph("x", contours=[[(300, 300), (300 + dx, 300 + dy), (300, 900)]])
+        sources.append(
+            {"name": f"m{w}_{x}", "location": {"Weight": w, "Width": x}, "glyphs": {"x": glyph}}
+        )
+    found = _codes(build_designspace(axes=axes, sources=sources), SEGMENT_TURNS_OVER)
+    (segment,) = [s for r in found for s in r.raw_data["segments"] if s["point"] == 0]
+    assert segment["normalizedLocation"] == pytest.approx({"Weight": 0.5, "Width": 0.5})
+
+
+def test_the_loop_formula_agrees_with_a_polyline():
+    rng = np.random.default_rng(7)
+    for _ in range(60):
+        p = rng.uniform(-300, 300, (4, 2))
+        t = np.linspace(0, 1, 301)[:, None]
+        pts = (
+            (1 - t) ** 3 * p[0]
+            + 3 * (1 - t) ** 2 * t * p[1]
+            + 3 * (1 - t) * t * t * p[2]
+            + t**3 * p[3]
+        )
+        a, b = pts[:-1], pts[1:]
+
+        def orient(p, q, r):
+            return (q[..., 0] - p[..., 0]) * (r[..., 1] - p[..., 1]) - (q[..., 1] - p[..., 1]) * (
+                r[..., 0] - p[..., 0]
+            )
+
+        crossing = False
+        for i in range(len(a)):
+            j = slice(i + 2, len(a))
+            if (
+                (orient(a[i], b[i], a[j]) * orient(a[i], b[i], b[j]) < 0)
+                & (orient(a[j], b[j], a[i]) * orient(a[j], b[j], b[i]) < 0)
+            ).any():
+                crossing = True
+                break
+        assert (topology._loop_span(*(q[None] for q in p))[0] > 0) == crossing
+
+
+def test_inside_a_cell_points_blend_their_corners_exactly():
+    from fontTools.varLib.models import VariationModel
+
+    locations = [
+        {},
+        {"A": 1},
+        {"B": 1},
+        {"A": 1, "B": 1},
+        {"A": 0.4},
+        {"B": -1},
+        {"A": 0.4, "B": 0.6},
+    ]
+    model = VariationModel(locations, axisOrder=["A", "B"])
+    points = np.random.default_rng(0).uniform(-100, 100, (len(locations), 5, 2))
+    masters = topology.GlyphMasters(
+        "x",
+        tuple(f"m{i}" for i in range(len(locations))),
+        model,
+        points,
+        np.array([4]),
+        np.array([topology.TAG_ON] * 5, dtype=np.int8),
+        {"A": (0, 0, 1), "B": (-1, 0, 1)},
+    )
+    sampling = topology.Sampling(masters, None)
+    flat = sampling.positions(points).reshape(-1, 5, 2)
+    for lower, frac, linear, weight in sampling.groups():
+        blended = sum(weight[:, c, None, None] * flat[linear[:, c]] for c in range(linear.shape[1]))
+        where = [sampling.location(lo, fr) for lo, fr in zip(lower, frac, strict=True)]
+        exact = np.einsum("lm,mpk->lpk", topology.master_scalars_at(model, where), points)
+        assert np.abs(blended - exact).max() < 1e-9

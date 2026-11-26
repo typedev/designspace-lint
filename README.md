@@ -61,7 +61,9 @@ and makes a notch or a spike, which the variable font draws. `--topology` (or
 `lint(..., topology=True)`) samples each glyph where varLib's model puts the
 instances (per axis the masters' values, the ends, the default, and the
 quarters between them) and reports a hidden point that comes out (4.27), and
-one some masters hide and others leave outside (4.28). Each glyph is
+one some masters hide and others leave outside (4.28), and the vector from a
+point to the next that turns over on the way, a handle turned through its
+point or two handles swapped (4.32), and cubic curves that loop (4.33). Each glyph is
 interpolated over the masters that draw it, as varLib does with a sparse
 master. It needs NumPy (the `topology` extra), and on a large family it adds
 about as much as the rest of the run, so it is off by default.
@@ -153,7 +155,7 @@ changelog has a "For consumers" section.
 | 1 Geometry | axis minimum/default/maximum, mappings, duplicate names and tags, discrete axis values, **avar2 mappings**: from the default, duplicate inputs, unknown axes, clamped values, outputs past the masters, chains; the declared `<variable-fonts>` |
 | 2 Sources | locations (as written in the file, before fontTools drops unknown axes), missing UFOs, duplicate locations as varLib compares them, the default, sources off a discrete axis' values |
 | 3 Instances | instance locations and names, unknown location labels, one name at two locations |
-| 4 Glyphs | master compatibility: contours, points, curve types, components, anchors, unicodes, contour direction, empty glyphs, **how far along each axis a glyph actually reaches**, components in a ring or of a missing glyph, open contours, contours that run the wrong way (a filled counter, a bar or an accent that cuts a hole where it overlaps), and with `--interpolatable` start points, contour order and shapes that thin out or kink, and with `--topology` hidden points that come out of the ink between the masters |
+| 4 Glyphs | master compatibility: contours, points, curve types, components, anchors, unicodes, contour direction, empty glyphs, **how far along each axis a glyph actually reaches**, components in a ring or of a missing glyph, open contours, contours that run the wrong way (a filled counter, a bar or an accent that cuts a hole where it overlaps), and with `--interpolatable` start points, contour order and shapes that thin out or kink, and with `--topology` hidden points that come out of the ink, segments that turn over and curves that loop, between the masters |
 | 5 Kerning | kerning groups, masters with no kerning, a glyph in two groups of one side |
 | 6 Font Info | units per em, required fields, values that differ |
 | 7 Rules | rule conditions, rules that never apply, rule glyphs missing from the default master, **overlapping rules** |

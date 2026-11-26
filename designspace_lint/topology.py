@@ -92,7 +92,14 @@ __all__ = [
     "BuriedPointChecker",
     "GlyphMasters",
     "SurfacingPoint",
+    "Loop",
+    "Sampling",
+    "MIN_VECTOR",
+    "TURN_STEP",
+    "Turnover",
     "WanderingPoint",
+    "curve_loops",
+    "segment_turnovers",
     "buried_points_surfacing",
     "master_scalars",
     "master_scalars_at",
@@ -801,3 +808,348 @@ def point_at(
     weights = np.asarray(master_scalars(masters.model, normalized_location), dtype=float)
     x, y = weights @ masters.points[:, start + point]
     return float(x), float(y)
+
+
+# =============================================================================
+# Segments that turn over, curves that loop (designspace-lint#2)
+# =============================================================================
+#
+# Between neighbouring grid values (the masters' values, the axis ends and
+# the default) every point moves linearly along one axis and bilinearly over
+# two: the model's scalars break only at those values. So the vector between
+# two consecutive points is known exactly from its value at the grid points:
+# a straight path along an edge, a bilinear patch over a face.
+
+#: A vector passes near zero along an edge when it comes within this share of
+#: its change per normalized unit (`designspace-lint#2`'s grid of 41 values
+#: per axis: a turn of more than 90° between two neighbouring locations).
+TURN_STEP = 0.05
+#: Vectors shorter than this in any master have no direction to keep (a
+#: retracted handle), in font units.
+MIN_VECTOR = 1.0
+
+
+@dataclass(frozen=True)
+class Turnover:
+    """The vector between two consecutive points turns over between masters."""
+
+    contour: int
+    point: int  # index of the pair's first point in the contour (UFO order)
+    next_point: int  # and of the second: the next one, the first after the last
+    kind: str  # "handle" (on-curve to off-curve), "betweenHandles", "line"
+    location: dict  # normalized, where it is shortest
+    places: int  # grid edges and faces where it turns over
+
+
+@dataclass(frozen=True)
+class Loop:
+    """A cubic curve that crosses itself at sampled locations."""
+
+    contour: int
+    point: int  # index of the curve's first on-curve point in the contour
+    location: dict  # normalized, where the loop is widest (in its parameter)
+    looping: int  # sampled locations where it loops
+    checked: int  # sampled locations it was checked at
+    masters_looping: tuple[str, ...]  # masters in which it loops already
+
+
+class Sampling:
+    """The grid of a glyph's masters and the locations sampled between them.
+
+    Depends only on the masters' model and axes, so glyphs drawn by the same
+    masters share one. The grid is every combination of each axis' grid
+    values (the masters' values, the ends, the default); the samples are
+    `sample_locations`', each a multilinear blend of its cell's corners,
+    which the model makes exact (its scalars break only at grid values).
+    """
+
+    def __init__(self, masters: GlyphMasters, axes_between=AUTO, quarters: bool = True):
+        self.axes_between = resolve_axes_between(masters, axes_between, quarters)
+        self.names, self.grid, _between = _grid(masters, quarters)
+        self.shape = tuple(len(g) for g in self.grid)
+        self.steps = (0.25, 0.5, 0.75) if quarters else (0.5,)
+        corners = [dict(zip(self.names, c, strict=True)) for c in itertools.product(*self.grid)]
+        weights = master_scalars_at(masters.model, corners or [{}])
+        # mostly zero (a master's own location has one weight): summed sparsely
+        self._rows, self._cols = np.nonzero(np.abs(weights) > _WEIGHT_EPSILON)
+        self._weights = weights[self._rows, self._cols]
+        self._count = len(corners) or 1
+        self._groups = None
+
+    def positions(self, points: np.ndarray) -> np.ndarray:
+        """Every point at every grid location: (n_0, ..., n_k, points, 2)."""
+        flat = points.reshape(len(points), -1)
+        out = np.zeros((self._count, flat.shape[1]))
+        np.add.at(out, self._rows, self._weights[:, None] * flat[self._cols])
+        return out.reshape(*self.shape, *points.shape[1:])
+
+    def groups(self):
+        """[(lower (L, axes), fractions (L, axes), corner indexes (L, 2^k), weights (L, 2^k))],
+        by which axes sit between grid values."""
+        if self._groups is None:
+            self._groups = []
+            count = len(self.names)
+            limit = count if self.axes_between is None else min(self.axes_between, count)
+            for k in range(limit + 1):
+                for off in itertools.combinations(range(count), k):
+                    per_axis = [
+                        [(j, f) for j in range(len(self.grid[i]) - 1) for f in self.steps]
+                        if i in off
+                        else [(j, 0.0) for j in range(len(self.grid[i]))]
+                        for i in range(count)
+                    ]
+                    if any(not p for p in per_axis):
+                        continue
+                    combos = list(itertools.product(*per_axis))
+                    lower = np.array([[j for j, _f in c] for c in combos], dtype=np.int64)
+                    lower = lower.reshape(len(combos), count)
+                    frac = np.array([[f for _j, f in c] for c in combos]).reshape(
+                        len(combos), count
+                    )
+                    bits = list(itertools.product((0, 1), repeat=k))
+                    index = np.repeat(lower[:, None, :], len(bits), axis=1)
+                    weight = np.ones((len(combos), len(bits)))
+                    for c, pattern in enumerate(bits):
+                        for axis, bit in zip(off, pattern, strict=True):
+                            index[:, c, axis] += bit
+                            weight[:, c] *= frac[:, axis] if bit else 1 - frac[:, axis]
+                    if self.shape:
+                        linear = np.ravel_multi_index(tuple(np.moveaxis(index, -1, 0)), self.shape)
+                    else:
+                        linear = np.zeros(index.shape[:2], dtype=np.int64)
+                    self._groups.append((lower, frac, linear, weight))
+        return self._groups
+
+    def location(self, lower, frac) -> dict:
+        """A sample's normalized location, from its row of `groups`."""
+        loc = {}
+        for a, name in enumerate(self.names):
+            j, f = int(lower[a]), float(frac[a])
+            lo = self.grid[a][j]
+            loc[name] = float(lo + f * (self.grid[a][j + 1] - lo)) if f else float(lo)
+        return loc
+
+
+def _segments(masters: GlyphMasters):
+    """Every pair of consecutive points: (contour, point, first, second, kind)."""
+    found = []
+    start = 0
+    for contour, end in enumerate(masters.contours):
+        indices = list(range(start, int(end) + 1))
+        start = int(end) + 1
+        n = len(indices)
+        if n < 2:
+            continue
+        for k in range(n):
+            a, b = indices[k], indices[(k + 1) % n]
+            on_a, on_b = masters.tags[a] == TAG_ON, masters.tags[b] == TAG_ON
+            kind = "line" if on_a and on_b else "handle" if on_a or on_b else "betweenHandles"
+            found.append((contour, k, a, b, kind, (k + 1) % n))
+    return found
+
+
+def _cross(u, v):
+    return u[..., 0] * v[..., 1] - u[..., 1] * v[..., 0]
+
+
+def _dot(u, v):
+    return u[..., 0] * v[..., 0] + u[..., 1] * v[..., 1]
+
+
+def segment_turnovers(masters: GlyphMasters, sampling: Sampling | None = None) -> list[Turnover]:
+    """Pairs of consecutive points whose vector turns over between the masters.
+
+    Interpolated linearly, ``(1 - t)·a + t·b`` is zero only when ``a`` and ``b``
+    point opposite ways; a vector that reverses passes through (nearly) zero
+    on the way, and the outline has a cusp or a loop there. Along each grid
+    edge it is reported when it reverses and comes within `TURN_STEP` of its
+    change per normalized unit (a turn of more than 90° between two locations
+    that far apart); over each face of two axes, when it is exactly zero
+    somewhere inside (a full turn around the face). A zero inside a cell of
+    three or more axes lies on a line that reaches the faces. Vectors shorter
+    than `MIN_VECTOR` in any master are left out.
+    """
+    segments = _segments(masters)
+    if not segments or not len(masters.points):
+        return []
+    first = np.array([s[2] for s in segments])
+    second = np.array([s[3] for s in segments])
+    in_masters = masters.points[:, second] - masters.points[:, first]
+    keep = np.hypot(in_masters[..., 0], in_masters[..., 1]).min(axis=0) >= MIN_VECTOR
+    if not keep.any():
+        return []
+    sampling = Sampling(masters) if sampling is None else sampling
+    names, grid = sampling.names, sampling.grid
+    positions = sampling.positions(masters.points)
+    vectors = positions[..., second[keep], :] - positions[..., first[keep], :]
+    count = len(names)
+    best: dict[int, tuple[float, dict]] = {}  # kept segment -> (closeness, location)
+    places: dict[int, int] = {}
+
+    def note(flags, closeness, where):
+        for idx in zip(*np.nonzero(flags), strict=True):
+            *cell, seg = idx
+            places[seg] = places.get(seg, 0) + 1
+            value = float(closeness[tuple(idx)])
+            if seg not in best or value < best[seg][0]:
+                best[seg] = (value, where(tuple(cell), tuple(idx)))
+
+    for i in range(count):
+        if len(grid[i]) < 2:
+            continue
+        a = np.take(vectors, range(len(grid[i]) - 1), axis=i)
+        b = np.take(vectors, range(1, len(grid[i])), axis=i)
+        d = b - a
+        span = np.diff(grid[i]).reshape([-1 if k == i else 1 for k in range(count)] + [1])
+        length2 = _dot(d, d)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t0 = np.where(length2 > 0, -_dot(a, d) / length2, -1.0)
+        nearest = a + np.clip(t0, 0, 1)[..., None] * d
+        m = np.hypot(nearest[..., 0], nearest[..., 1])
+        reach = TURN_STEP / 2 * np.sqrt(length2) / span
+        flags = (_dot(a, b) < 0) & (t0 > 0) & (t0 < 1) & (m < reach)
+
+        def where(cell, idx, i=i, t0=t0):
+            loc = {n: float(grid[k][cell[k]]) for k, n in enumerate(names)}
+            lo, hi = grid[i][cell[i]], grid[i][cell[i] + 1]
+            loc[names[i]] = float(lo + float(t0[idx]) * (hi - lo))
+            return loc
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            note(flags, np.where(reach > 0, m / reach, 0.0), where)
+
+    for i, j in itertools.combinations(range(count), 2):
+        if len(grid[i]) < 2 or len(grid[j]) < 2:
+            continue
+        lo_i, hi_i = range(len(grid[i]) - 1), range(1, len(grid[i]))
+        lo_j, hi_j = range(len(grid[j]) - 1), range(1, len(grid[j]))
+        v00 = np.take(np.take(vectors, lo_i, axis=i), lo_j, axis=j)
+        v10 = np.take(np.take(vectors, hi_i, axis=i), lo_j, axis=j)
+        v01 = np.take(np.take(vectors, lo_i, axis=i), hi_j, axis=j)
+        v11 = np.take(np.take(vectors, hi_i, axis=i), hi_j, axis=j)
+        A, B, C, D = v00, v10 - v00, v01 - v00, v11 - v10 - v01 + v00
+        # (A + B s) ∥ (C + D s): a quadratic in s
+        q2, q1, q0 = _cross(B, D), _cross(A, D) + _cross(B, C), _cross(A, C)
+        scale = np.maximum(np.abs(q2) + np.abs(q1) + np.abs(q0), 1e-12)
+        roots = []
+        with np.errstate(divide="ignore", invalid="ignore"):
+            disc = q1 * q1 - 4 * q2 * q0
+            quadratic = np.abs(q2) > 1e-9 * scale
+            sq = np.sqrt(np.where(disc >= 0, disc, np.nan))
+            roots.append(np.where(quadratic, (-q1 - sq) / (2 * q2), -q0 / q1))
+            roots.append(np.where(quadratic, (-q1 + sq) / (2 * q2), np.nan))
+        for s in roots:
+            inside_s = (s > 0) & (s < 1)
+            s_ = np.where(inside_s, s, 0.0)[..., None]
+            u, w = A + B * s_, C + D * s_
+            ww = _dot(w, w)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                t = np.where(ww > 0, -_dot(u, w) / ww, np.nan)
+            zero = u + np.nan_to_num(t)[..., None] * w
+            size = np.maximum(np.hypot(A[..., 0], A[..., 1]), 1.0)
+            flags = (
+                inside_s & (t > 0) & (t < 1) & (np.hypot(zero[..., 0], zero[..., 1]) < 1e-6 * size)
+            )
+
+            def where(cell, idx, i=i, j=j, s=s, t=t):
+                loc = {n: float(grid[k][cell[k]]) for k, n in enumerate(names)}
+                for axis, frac in ((i, float(s[idx])), (j, float(t[idx]))):
+                    lo, hi = grid[axis][cell[axis]], grid[axis][cell[axis] + 1]
+                    loc[names[axis]] = float(lo + frac * (hi - lo))
+                return loc
+
+            note(flags, np.zeros(flags.shape), where)
+
+    kept = [s for s, k in zip(segments, keep, strict=True) if k]
+    found = [
+        Turnover(kept[seg][0], kept[seg][1], kept[seg][5], kept[seg][4], best[seg][1], places[seg])
+        for seg in sorted(best)
+    ]
+    return found
+
+
+def _cubics(masters: GlyphMasters):
+    """Every cubic curve: (contour, its first point's index, the four point indexes)."""
+    found = []
+    start = 0
+    for contour, end in enumerate(masters.contours):
+        indices = list(range(start, int(end) + 1))
+        start = int(end) + 1
+        n = len(indices)
+        for k in range(n):
+            a, b, c, d = (indices[(k + m) % n] for m in range(4))
+            if n >= 4 and masters.tags[a] == TAG_ON and masters.tags[d] == TAG_ON:
+                if masters.tags[b] == TAG_CUBIC and masters.tags[c] == TAG_CUBIC:
+                    found.append((contour, k, (a, b, c, d)))
+    return found
+
+
+def _loop_span(p0, p1, p2, p3) -> np.ndarray:
+    """Where a cubic crosses itself: the span t2 - t1 of the parameters that
+    meet, or 0 where it does not (exact: B(t1) = B(t2), solved for t1 + t2 and
+    t1·t2)."""
+    a = -p0 + 3 * p1 - 3 * p2 + p3
+    b = 3 * p0 - 6 * p1 + 3 * p2
+    c = -3 * p0 + 3 * p1
+    axb, axc, aa = _cross(a, b), _cross(a, c), _dot(a, a)
+    scale = np.maximum(np.abs(c).max(axis=-1), 1.0) ** 2
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ok = (np.abs(axb) > 1e-9 * scale) & (aa > 1e-12 * scale)
+        sigma = np.where(ok, -axc / axb, 0.0)
+        pi = sigma * sigma + _dot(b * sigma[..., None] + c, a) / np.where(ok, aa, 1.0)
+        disc = sigma * sigma - 4 * pi
+        root = np.sqrt(np.where(disc > 0, disc, 0.0))
+    t1, t2 = (sigma - root) / 2, (sigma + root) / 2
+    loops = ok & (disc > 0) & (t1 > 1e-6) & (t2 < 1 - 1e-6)
+    return np.where(loops, t2 - t1, 0.0)
+
+
+def curve_loops(
+    masters: GlyphMasters, sampling: Sampling | None = None, chunk: int = 4096
+) -> list[Loop]:
+    """Cubic curves of the glyph that cross themselves at a sampled location.
+
+    Sampled as `sample_locations` samples (``sampling``, built with the
+    ``axes_between`` wanted). Tested directly, not inferred from the
+    handles: crossed handles do not predict a loop. Quadratic curves are
+    left out: one cannot loop.
+    """
+    cubics = _cubics(masters)
+    if not cubics:
+        return []
+    sampling = Sampling(masters) if sampling is None else sampling
+    positions = sampling.positions(masters.points)
+    ids = np.array([c[2] for c in cubics])  # (curves, 4)
+    used, remap = np.unique(ids, return_inverse=True)
+    remap = remap.reshape(ids.shape)
+    flat = positions.reshape(-1, *positions.shape[len(sampling.grid) :])[:, used]
+    stats = [[0, 0, 0.0, None] for _c in cubics]  # looping, checked, widest, location
+    for lower, frac, linear, weight in sampling.groups():
+        for begin in range(0, len(lower), chunk):
+            lin = linear[begin : begin + chunk]
+            w = weight[begin : begin + chunk]
+            points = sum(w[:, c, None, None] * flat[lin[:, c]] for c in range(lin.shape[1]))
+            curve = points[:, remap]  # (L, curves, 4, 2)
+            span = _loop_span(
+                curve[..., 0, :], curve[..., 1, :], curve[..., 2, :], curve[..., 3, :]
+            )
+            for q in range(len(cubics)):
+                column = span[:, q]
+                stats[q][1] += len(column)
+                hits = np.nonzero(column > 0)[0]
+                if len(hits):
+                    stats[q][0] += len(hits)
+                    widest = int(hits[np.argmax(column[hits])])
+                    if column[widest] > stats[q][2]:
+                        stats[q][2] = float(column[widest])
+                        stats[q][3] = sampling.location(lower[begin + widest], frac[begin + widest])
+    found = []
+    in_masters = _loop_span(*(masters.points[:, ids[:, m]] for m in range(4)))  # (masters, curves)
+    for q, (contour, point, _ids) in enumerate(cubics):
+        looping, checked, _widest, location = stats[q]
+        if looping:
+            masters_looping = tuple(
+                s for s, v in zip(masters.sources, in_masters[:, q], strict=True) if v > 0
+            )
+            found.append(Loop(contour, point, location, looping, checked, masters_looping))
+    return found

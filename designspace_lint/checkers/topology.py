@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 BURIED_POINT_SURFACES = 27
 BURIED_POINT_WANDERS = 28
+SEGMENT_TURNS_OVER = 32
+CURVE_LOOPS = 33
 
 # How many points a finding's text lists; raw_data has them all.
 _LISTED = 5
@@ -190,10 +192,15 @@ class TopologyChecker(GlyphsChecker):
                 glyph_name, (), sub_model, np.zeros((len(masters_of), 0, 2)), [], [], supports
             )
             used = topology.resolve_axes_between(glyph_masters, self.axes_between)
-            locations = topology.sample_locations(glyph_masters, axes_between=used)
-            weights = topology.master_scalars_at(sub_model, locations)
-            sampled[key] = (sub_model, masters_of, locations, weights, used)
-        sub_model, masters_of, locations, weights, used = sampled[key]
+            sampled[key] = {
+                "model": sub_model,
+                "masters": masters_of,
+                "used": used,
+                "sampling": topology.Sampling(glyph_masters, used),
+                "locations": None,  # with their weights, for buried points only
+            }
+        prepared = sampled[key]
+        sub_model, masters_of, used = prepared["model"], prepared["masters"], prepared["used"]
         glyph_masters = topology.GlyphMasters(
             name=glyph_name,
             sources=tuple(names[m] for m in masters_of),
@@ -204,15 +211,22 @@ class TopologyChecker(GlyphsChecker):
             design_axes=supports,
         )
         checker = topology.BuriedPointChecker(glyph_masters, tolerance)
-        if not checker.candidates:
-            return
-        surfacing = topology.buried_points_surfacing(
-            glyph_masters, locations=locations, weights=weights, checker=checker
-        )
-        wandering = sorted(
-            checker.wandering(), key=lambda p: (-round(p.depth, 6), p.contour, p.point)
-        )
-        if not surfacing and not wandering:
+        surfacing, wandering = [], []
+        if checker.candidates:
+            if prepared["locations"] is None:
+                locations = topology.sample_locations(glyph_masters, axes_between=used)
+                weights = topology.master_scalars_at(sub_model, locations)
+                prepared["locations"] = (locations, weights)
+            locations, weights = prepared["locations"]
+            surfacing = topology.buried_points_surfacing(
+                glyph_masters, locations=locations, weights=weights, checker=checker
+            )
+            wandering = sorted(
+                checker.wandering(), key=lambda p: (-round(p.depth, 6), p.contour, p.point)
+            )
+        turnovers = topology.segment_turnovers(glyph_masters, prepared["sampling"])
+        loops = topology.curve_loops(glyph_masters, prepared["sampling"])
+        if not (surfacing or wandering or turnovers or loops):
             return
 
         found = correspondence.problems(glyph_name)
@@ -229,6 +243,123 @@ class TopologyChecker(GlyphsChecker):
             )
             result.raw_data["axesBetween"] = used
             yield result
+        if turnovers:
+            yield self._turnover_result(glyph_name, turnovers, user_of, found)
+        if loops:
+            result = self._loop_result(glyph_name, loops, user_of, labels, found)
+            result.raw_data["axesBetween"] = used
+            yield result
+
+    def _turnover_result(self, glyph_name, turnovers, user_of, found) -> CheckResult:
+        def what(t):
+            pair = f"from point {t.point} to {t.next_point} of contour {t.contour}"
+            return {
+                "handle": f"the handle {pair}",
+                "betweenHandles": f"the span between handles {pair}",
+                "line": f"the line {pair}",
+            }[t.kind]
+
+        first = turnovers[0]
+        if len(turnovers) == 1:
+            description = f"{what(first)} turns over between masters"
+        else:
+            description = f"{len(turnovers)} segments turn over between masters"
+        lines = [f"{what(t)}, near {_where(user_of(t.location))}" for t in turnovers[:_LISTED]]
+        if len(turnovers) > _LISTED:
+            lines.append(f"{len(turnovers) - _LISTED} more")
+        raw = {
+            "glyphName": glyph_name,
+            "segments": [
+                {
+                    "contour": t.contour,
+                    "point": t.point,
+                    "nextPoint": t.next_point,
+                    "kind": t.kind,
+                    "location": user_of(t.location),
+                    "normalizedLocation": dict(t.location),
+                    "places": t.places,
+                }
+                for t in turnovers
+            ],
+        }
+        if found:
+            raw["correspondence"] = found
+        return self._make_result(
+            code=SEGMENT_TURNS_OVER,
+            description=description,
+            glyph_name=glyph_name,
+            location=_where(user_of(first.location)),
+            details=(
+                "Between two masters the vector from one point to the next moves "
+                "straight from one to the other, and it is zero only where they point "
+                "opposite ways: this one reverses, so somewhere on the way the two points "
+                "meet and the outline has a cusp or a loop, which the variable font draws. "
+                "Usually a handle turned through its on-curve point, or two handles "
+                "swapped, in one master. "
+                + "; ".join(lines)
+                + "."
+                + self._correspondence_note(found)
+            ),
+            severity=SEVERITY_DESIGN,
+            raw_data=raw,
+        )
+
+    def _loop_result(self, glyph_name, loops, user_of, labels, found) -> CheckResult:
+        first = loops[0]
+        if len(loops) == 1:
+            description = (
+                f"the curve from point {first.point} of contour {first.contour} loops "
+                "between masters"
+            )
+        else:
+            description = f"{len(loops)} curves loop between masters"
+        lines = []
+        for loop in loops[:_LISTED]:
+            text = (
+                f"the curve from point {loop.point} of contour {loop.contour}, widest at "
+                f"{_where(user_of(loop.location))} (at {loop.looping} of {loop.checked} "
+                "locations checked)"
+            )
+            if loop.masters_looping:
+                text += ", in " + ", ".join(labels.get(m, m) for m in loop.masters_looping[:3])
+                if len(loop.masters_looping) > 3:
+                    text += f" and {len(loop.masters_looping) - 3} more masters"
+                text += " already"
+            lines.append(text)
+        if len(loops) > _LISTED:
+            lines.append(f"{len(loops) - _LISTED} more")
+        raw = {
+            "glyphName": glyph_name,
+            "curves": [
+                {
+                    "contour": loop.contour,
+                    "point": loop.point,
+                    "location": user_of(loop.location),
+                    "normalizedLocation": dict(loop.location),
+                    "looping": loop.looping,
+                    "checked": loop.checked,
+                    "mastersLooping": list(loop.masters_looping),
+                }
+                for loop in loops
+            ],
+        }
+        if found:
+            raw["correspondence"] = found
+        return self._make_result(
+            code=CURVE_LOOPS,
+            description=description,
+            glyph_name=glyph_name,
+            location=_where(user_of(first.location)),
+            details=(
+                "A cubic curve that crosses itself draws a small loop where it should "
+                "only bend, and the variable font draws it: "
+                + "; ".join(lines)
+                + ". Its handles reach too far, or past each other, where the masters "
+                "around meet." + self._correspondence_note(found)
+            ),
+            severity=SEVERITY_DESIGN,
+            raw_data=raw,
+        )
 
     @staticmethod
     def _user_converter(axes, supports):
