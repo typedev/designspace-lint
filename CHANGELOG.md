@@ -81,7 +81,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     84-master designspace: 4.32 in 12 glyphs (7 whose points do not
     correspond, said in `correspondence`; the counters of 6 and 9, which
     loop in two masters already; three short lines that reverse), 4.33 in 4,
-    all in masters already. The phase takes the same time as before.
+    all in masters already. On GoogleSansFlex: 4.32 in 3 glyphs, lines whose
+    ends some masters draw in the other order (2 and 5 of 216 masters), and
+    no loop. Both runs with `--topology` take the same time as before
+    (78 s for the phase there, 207 s for the whole run here).
 - **Contour direction, judged in each glyph** (group `direction`, in the
   glyphs phase of every run). 4.8 compares the masters with one another;
   these say whether they are right, which they can all be wrong about at
