@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **The outlines between the masters: `--topology`** (`lint(...,
+  topology=True)`, the `topology` phase, group `topology`; NumPy through the
+  `topology` extra, off by default). Font-Rover's buried-point check
+  (designspace-lint#5), moved here so that the command line and an editor
+  apply one rule. A designer hides on-curve points inside the ink, and every
+  master looks right, while between them such a point can come out and make a
+  notch or a spike that the variable font draws. Each glyph is sampled where
+  varLib's model puts the instances: over the masters that draw it (the
+  sub-model a sparse master gets; a non-default master with an empty glyph
+  counts as leaving it out, as varLib's gvar does), per axis at the masters'
+  values, the ends, the default and the quarters between them, the product
+  over the axes.
+  - **4.27 BURIED_POINT_SURFACES**, warning: a point that one master hides at
+    least, and that no master around a location leaves outside, comes out of
+    the ink there. One finding per glyph; `raw_data["points"]` gives each
+    point's contour, point, depth, worst location (user and normalized) and
+    the masters that hide it.
+  - **4.28 BURIED_POINT_WANDERS**, warning: a point some masters hide and
+    others leave outside. Between them it is not checked, since the change
+    may be meant; the finding names the masters (`sourceName` is the one the
+    point is furthest out in), for the designer to decide.
+  - When the glyph's points do not correspond across the masters (a start
+    point or a contour order, as `--interpolatable` reports in 4.14/4.15),
+    point indexes pair the wrong points, which can make the finding by
+    itself: `raw_data["correspondence"]` says so, and the details say to fix
+    that first.
+  - `topology_tolerance` (`--topology-tolerance`, default 1 unit): how far a
+    point may come out and still count as on the edge.
+  - On a large 4-axis designspace (84 masters) it gives
+    exactly Font-Rover's 57 points in 36 glyphs, to the hundredth of a unit,
+    and one point more in 4.28, in a glyph some full masters leave out:
+    varLib builds it from the others, Font-Rover's interpolator does not. The
+    phase adds 49 s to the 34 s of a default run; Font-Rover's own scan took
+    102 s.
+- **`designspace_lint.topology`**, the rule as a public module: `GlyphMasters`
+  (the same fields as Font-Rover's), `BuriedPointChecker` (`.at(location)`
+  for one location, `.wandering()`), `buried_points_surfacing`,
+  `sample_locations`, `point_at`, `point_tags`, and `master_scalars_at`, the
+  masters' weights at many locations at once (fontTools' `getMasterScalars`,
+  over arrays).
+
+### For consumers
+
+- `CodeInfo.topology_only`, like `interpolatable_only`.
+- New `raw_data` keys, in `RAW_KEYS`: `points`, `normalizedLocation`,
+  `correspondence`. `location` and `tolerance` carry another meaning for
+  4.27/4.28, which their text gives: user values, and units.
+- Font-Rover: 4.27/4.28 are its 4.104/4.105, with the same rule, results and
+  severities. Its own copies can go, and `GlyphMasters` can be passed to
+  `designspace_lint.topology` as it is.
+
 ## [0.10.0] - 2026-11-25
 
 The component graph, contour start points and directions read by lining the

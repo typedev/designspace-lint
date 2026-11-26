@@ -66,15 +66,32 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Also check that composites list bases first, then marks bottom up",
     )
+    parser.add_argument(
+        "--topology",
+        action="store_true",
+        help="Also sample the outlines between masters for buried points that come out "
+        "(slower; needs NumPy)",
+    )
+    parser.add_argument(
+        "--topology-tolerance",
+        type=float,
+        default=None,
+        metavar="UNITS",
+        help="Units a buried point may come out and still count as on the edge (default 1)",
+    )
     args = parser.parse_args(argv)
 
     from . import lint_path
 
     try:
         problems = lint_path(
-            args.path, interpolatable=args.interpolatable, construction=args.construction
+            args.path,
+            interpolatable=args.interpolatable,
+            construction=args.construction,
+            topology=args.topology,
+            topology_tolerance=args.topology_tolerance,
         )
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, ImportError) as exc:
         print(f"designspace-lint: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:  # a malformed document, an unreadable UFO

@@ -35,6 +35,7 @@ result means every check ran.
 pip install designspace-lint            # the checks and the CLI
 pip install "designspace-lint[features]"  # + the features.fea comparison (ufo2ft)
 pip install "designspace-lint[interpolatable]"  # + a solver for --interpolatable
+pip install "designspace-lint[topology]"  # + NumPy for --topology
 ```
 
 ### Point by point: `--interpolatable`
@@ -50,6 +51,24 @@ minimum spanning tree of the locations, as fontTools builds with scipy;
 scipy itself is not needed). It roughly doubles the run time, so it is off by
 default. Glyphs of more than six contours need an assignment solver; without
 the extra they are counted and reported once (4.18) instead of checked.
+
+### Between the masters: `--topology`
+
+Designers hide on-curve points inside the ink: the corner of K's arm inside
+the stem, the crotch of k drawn as one contour that overlaps itself. Every
+master can look right while, between them, such a point comes out of the ink
+and makes a notch or a spike, which the variable font draws. `--topology` (or
+`lint(..., topology=True)`) samples each glyph where varLib's model puts the
+instances (per axis the masters' values, the ends, the default, and the
+quarters between them) and reports a hidden point that comes out (4.27), and
+one some masters hide and others leave outside (4.28). Each glyph is
+interpolated over the masters that draw it, as varLib does with a sparse
+master. It needs NumPy (the `topology` extra), and on a large family it adds
+about as much as the rest of the run, so it is off by default.
+`topology_tolerance` (`--topology-tolerance`, default 1 unit) is how far a
+point may come out and still count as on the edge. The rule is public in
+`designspace_lint.topology`, so an editor can mark the points live with
+`BuriedPointChecker(...).at(location)`.
 
 ### House order of composites: `--construction`
 
@@ -134,7 +153,7 @@ changelog has a "For consumers" section.
 | 1 Geometry | axis minimum/default/maximum, mappings, duplicate names and tags, discrete axis values, **avar2 mappings**: from the default, duplicate inputs, unknown axes, clamped values, outputs past the masters, chains; the declared `<variable-fonts>` |
 | 2 Sources | locations (as written in the file, before fontTools drops unknown axes), missing UFOs, duplicate locations as varLib compares them, the default, sources off a discrete axis' values |
 | 3 Instances | instance locations and names, unknown location labels, one name at two locations |
-| 4 Glyphs | master compatibility: contours, points, curve types, components, anchors, unicodes, contour direction, empty glyphs, **how far along each axis a glyph actually reaches**, components in a ring or of a missing glyph, open contours, and with `--interpolatable` start points, contour order and shapes that thin out or kink |
+| 4 Glyphs | master compatibility: contours, points, curve types, components, anchors, unicodes, contour direction, empty glyphs, **how far along each axis a glyph actually reaches**, components in a ring or of a missing glyph, open contours, and with `--interpolatable` start points, contour order and shapes that thin out or kink, and with `--topology` hidden points that come out of the ink between the masters |
 | 5 Kerning | kerning groups, masters with no kerning, a glyph in two groups of one side |
 | 6 Font Info | units per em, required fields, values that differ |
 | 7 Rules | rule conditions, rules that never apply, rule glyphs missing from the default master, **overlapping rules** |

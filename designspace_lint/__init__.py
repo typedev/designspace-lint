@@ -87,6 +87,8 @@ def iter_lint(
     construction=False,
     phases=None,
     glyphs=None,
+    topology=False,
+    topology_tolerance=None,
 ):
     """Yield problems one at a time, as they are found.
 
@@ -105,6 +107,12 @@ def iter_lint(
         phases: run only these phases (ids from :data:`PHASES`); "file" and
             "geometry" always run.
         glyphs: check only these glyphs in the glyph phases.
+        topology: also sample the outlines between the masters for buried
+            points that come out of the ink (4.27, 4.28); see
+            :mod:`designspace_lint.topology`. Needs NumPy: install
+            ``designspace-lint[topology]``.
+        topology_tolerance: units a buried point may come out and still count
+            as on the edge (default 1; 0 for any deviation).
 
     Yields:
         :class:`CheckResult`, in phase order.
@@ -116,6 +124,8 @@ def iter_lint(
         construction=construction,
         phases=phases,
         glyphs=glyphs,
+        topology=topology,
+        topology_tolerance=topology_tolerance,
     )
     yield from linter.run(on_phase=on_phase, on_progress=on_progress)
 
@@ -130,6 +140,8 @@ def lint(
     construction=False,
     phases=None,
     glyphs=None,
+    topology=False,
+    topology_tolerance=None,
 ) -> list[CheckResult]:
     """Every problem in a designspace whose fonts are already open."""
     return list(
@@ -142,6 +154,8 @@ def lint(
             construction=construction,
             phases=phases,
             glyphs=glyphs,
+            topology=topology,
+            topology_tolerance=topology_tolerance,
         )
     )
 
@@ -156,6 +170,8 @@ def lint_path(
     construction=False,
     phases=None,
     glyphs=None,
+    topology=False,
+    topology_tolerance=None,
 ) -> list[CheckResult]:
     """Open a .designspace file and check it.
 
@@ -171,6 +187,8 @@ def lint_path(
         construction=construction,
         phases=phases,
         glyphs=glyphs,
+        topology=topology,
+        topology_tolerance=topology_tolerance,
     )
 
 

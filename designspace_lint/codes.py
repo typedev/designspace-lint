@@ -66,6 +66,8 @@ class CodeInfo:
     interpolatable_only: bool = False
     #: Reported only by `lint(..., construction=True)`.
     construction_only: bool = False
+    #: Reported only by `lint(..., topology=True)`.
+    topology_only: bool = False
     #: `raw_data` keys guaranteed on every finding with this code.
     locators: tuple[str, ...] = ()
     #: Every `raw_data` key a finding with this code may carry, the locators
@@ -85,6 +87,7 @@ GROUPS = {
     "compatibility": "Glyph compatibility",
     "coverage": "Glyph coverage",
     "interpolation": "Point correspondence",
+    "topology": "Outlines between masters",
     "construction": "Composite construction",
     "unicodes": "Unicodes",
     "components": "Components and contours",
@@ -199,6 +202,8 @@ _TABLE = [
     (4, 24, "COMPONENT_RING", "Components in a ring", "components", (ERR, WARN), ("glyphName", "glyphNames", "sourceName", "layerName")),
     (4, 25, "MISSING_COMPONENT_BASE", "Component of a missing glyph", "components", (ERR, WARN), ("glyphName", "sourceName", "layerName")),
     (4, 26, "OPEN_CONTOUR", "Open contour", "components", WARN, ("glyphName", "sourceName", "layerName")),
+    (4, 27, "BURIED_POINT_SURFACES", "Buried point comes out between masters", "topology", WARN, ("glyphName",), "topology"),
+    (4, 28, "BURIED_POINT_WANDERS", "Buried point is outside in some masters", "topology", WARN, ("glyphName", "sourceName"), "topology"),
     # --- 5 Kerning ---
     (5, 0, "NO_KERNING_IN_SOURCE", "Master without kerning", "kerning", WARN, ("sourceName",)),
     (5, 1, "NO_KERNING_IN_DEFAULT", "Default without kerning", "kerning", WARN, ("sourceName",)),
@@ -264,11 +269,14 @@ def _build() -> dict[tuple[int, int], CodeInfo]:
                 if "interpolatable" in flags
                 else "construction"
                 if "construction" in flags
+                else "topology"
+                if "topology" in flags
                 else _PHASE[category]
             ),
             severities=severities,
             interpolatable_only="interpolatable" in flags,
             construction_only="construction" in flags,
+            topology_only="topology" in flags,
             locators=tuple(locators),
             raw_keys=_raw_keys(key, locators),
             retired="retired" in flags,
@@ -343,7 +351,7 @@ RAW_KEYS: dict[str, str] = {
     "variableFont": "The `<variable-font>`'s name.",
     # --- sources and instances ---
     "path": "Path of the UFO (2.x) or of the instance's file, None when it has none (3.1).",
-    "location": "2.3 and 2.6: the source's location as written, axis name -> design value. 3.4: the location the instances share.",
+    "location": "2.3 and 2.6: the source's location as written, axis name -> design value. 3.4: the location the instances share. 4.27: the worst sampled location, 4.28: the location of the master the point is furthest out in; axis name -> user value, continuous axes only (see `discreteLocation`).",
     "source": "The source's name (kept for older consumers; same as `sourceName`).",
     "availableLayers": "The layers the UFO does have.",
     "instance": "The instance's position in the document (kept for older consumers; same as `instanceIndex`).",
@@ -361,7 +369,10 @@ RAW_KEYS: dict[str, str] = {
     "contours": "Indexes of the open contours, from 0.",
     "point": "Index of the point within the contour, as interpolatable counts them.",
     "type": 'fontTools interpolatable\'s problem type ("contour_order", "wrong_start_point", "underweight", "kink").',
-    "tolerance": "interpolatable's score for the pair, 0..1: the lower, the surer the problem.",
+    "tolerance": "4.14-4.17: interpolatable's score for the pair, 0..1: the lower, the surer the problem. 4.27/4.28: the units a buried point may come out of the ink and still count as on the edge.",
+    "points": 'Every point of the glyph the finding is about, worst first, each a dict: `contour` and `point` (indexes from 0, the UFO\'s order), `depth` (units out of the ink, > 0), `location` (user values), `mastersBuried` (the `sourceName`s of the masters that keep it inside the ink); 4.27 adds `normalizedLocation` (where it is worst), `surfacing` and `checked` (at how many sampled locations it is out, of how many it was checked at); 4.28 adds `mastersOutside` (`{"sourceName", "depth"}` per master leaving it outside, worst first) and gives in `location` the worst of those masters\' location.',
+    "normalizedLocation": "The worst sampled location, axis name -> normalized value (-1..1), as varLib's model reads it.",
+    "correspondence": 'Present when the glyph\'s points do not correspond across the masters: interpolatable\'s problems between neighbouring masters, each `{"type": "contour_order" or "wrong_start_point", "masters": [reference, other] master labels, "contour"}`. Point by point the build pairs a point with another master\'s other point, which can make the finding by itself; the 4.14/4.15 of `--interpolatable` say more.',
     "proposedOrder": "fontTools' matching: for each item of the pair's reference (`masters[0]`), the index of the other master's item that matches it. Items as interpolatable lists them: the glyph's own contours (in UFO order), then one item per component, measured on its decomposed outline.",
     "proposedStart": "fontTools' proposed start point for the other master's contour: an index into the contour as interpolatable reads it (from its first on-curve point), which can differ from the UFO's point order. 4.5/4.8/4.9 give a UFO index in `realign`.",
     "reversed": "Whether the other master's contour runs the other way.",
@@ -498,6 +509,8 @@ _RAW_KEYS: dict[tuple[int, int], tuple[str, ...]] = {
     (4, 20): ('glyphName', 'current', 'expected', 'expectedDiffers', 'groups', 'locationType'),
     (4, 21): ('glyphName', 'components'),
     (4, 22): ('glyphName', 'glyphNames', 'codepoint', 'sourceName', 'layerName'),
+    (4, 27): ('glyphName', 'correspondence', 'location', 'normalizedLocation', 'points', 'tolerance'),
+    (4, 28): ('glyphName', 'sourceName', 'correspondence', 'location', 'points', 'tolerance'),
     (4, 23): ('glyphName', 'codepoints', 'sourceName', 'layerName'),
     (4, 24): ('glyphName', 'glyphNames', 'sourceName', 'layerName', 'links'),
     (4, 25): ('glyphName', 'sourceName', 'layerName', 'missingBases'),

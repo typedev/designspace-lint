@@ -1,0 +1,295 @@
+# Copyright 2026 Alexander Lubovenko
+# Licensed under the Apache License, Version 2.0
+
+"""
+Buried points that come out of the ink between the masters (4.27, 4.28).
+
+The example is designspace-lint#5's: a stem whose top leans further right
+with weight, and an arm whose tip sits 5 units inside the stem's right edge
+in both masters. The tip moves linearly, and so does the edge's top; where
+the edge lies at the tip's height is a product of the two, so halfway the
+tip is 64 units out of the stem, and the instance there has a spike.
+"""
+
+import json
+import sys
+
+import pytest
+
+from designspace_lint import cli, lint
+from designspace_lint.checkers.topology import BURIED_POINT_SURFACES, BURIED_POINT_WANDERS
+from designspace_lint.engine import Linter
+from designspace_lint.model import CATEGORY_GLYPHS, SEVERITY_DESIGN, effective_severity
+from fakes import FakeGlyph, build_designspace
+
+np = pytest.importorskip("numpy")
+
+from designspace_lint import topology  # noqa: E402
+
+WEIGHT = {"name": "Weight", "tag": "wght", "minimum": 0, "default": 0, "maximum": 1000}
+
+
+def _k(top, tip):
+    """A stem `(0,0) (100,0) (top,700) (0,700)` and an arm pointing into it at `tip`."""
+    x, y = tip
+    stem = [(0, 0), (100, 0), (top, 700), (0, 700)]
+    arm = [(x, y), (x + 300, y - 50), (x + 300, y + 50)]
+    return FakeGlyph("K", contours=[stem, arm], unicodes=[0x4B])
+
+
+LIGHT = _k(100, (95, 100))
+BOLD = _k(500, (437.86, 600))
+
+
+def _entry(*masters, axes=(WEIGHT,)):
+    """`masters`: (name, weight, glyph or None) -- None leaves the glyph out."""
+    sources = []
+    for name, weight, glyph in masters:
+        glyphs = {"space": FakeGlyph("space", unicodes=[0x20])}
+        if glyph is not None:
+            glyphs["K"] = glyph
+        sources.append({"name": name, "location": {"Weight": weight}, "glyphs": glyphs})
+    return build_designspace(axes=list(axes), sources=sources)
+
+
+def _found(entry, **kwargs):
+    return [
+        r
+        for r in lint(entry, topology=True, phases=["topology"], **kwargs)
+        if r.category == CATEGORY_GLYPHS and r.code in (BURIED_POINT_SURFACES, BURIED_POINT_WANDERS)
+    ]
+
+
+def test_a_tip_hidden_in_both_masters_comes_out_halfway():
+    (finding,) = _found(_entry(("Light", 0, LIGHT), ("Bold", 1000, BOLD)))
+
+    assert finding.code == BURIED_POINT_SURFACES
+    assert effective_severity(finding) == SEVERITY_DESIGN
+    assert finding.glyph_name == "K"
+    worst = finding.raw_data["points"][0]
+    assert (worst["contour"], worst["point"]) == (1, 0)
+    # 63.9 units out at weight 500, the sampled location nearest the peak
+    assert finding.raw_data["location"] == {"Weight": 500.0}
+    assert finding.raw_data["normalizedLocation"] == {"Weight": 0.5}
+    assert worst["depth"] == pytest.approx(63.9, abs=0.2)
+    assert sorted(worst["mastersBuried"]) == ["Bold", "Light"]
+    assert worst["surfacing"] >= 1 and worst["checked"] >= worst["surfacing"]
+    assert "Weight=500" in finding.location
+    assert "correspondence" not in finding.raw_data
+
+
+def test_a_master_at_the_peak_that_keeps_the_tip_inside_fixes_it():
+    medium = _k(300, (195, 350))  # the tip 5 units inside the leaning stem
+    found = _found(_entry(("Light", 0, LIGHT), ("Medium", 500, medium), ("Bold", 1000, BOLD)))
+    # still out a little at the quarters, but far less than without it
+    assert all(p["depth"] < 20 for r in found for p in r.raw_data["points"])
+
+
+def test_a_master_without_the_glyph_is_left_out_as_varlib_does():
+    found = _found(_entry(("Light", 0, LIGHT), ("Medium", 500, None), ("Bold", 1000, BOLD)))
+    (finding,) = found
+    assert finding.raw_data["points"][0]["depth"] == pytest.approx(63.9, abs=0.2)
+    assert sorted(finding.raw_data["points"][0]["mastersBuried"]) == ["Bold", "Light"]
+
+
+def test_an_upright_stem_keeps_the_tip_inside_everywhere():
+    light = _k(100, (95, 100))
+    bold = _k(100, (95, 600))
+    assert _found(_entry(("Light", 0, light), ("Bold", 1000, bold))) == []
+
+
+def test_a_point_outside_in_one_master_is_reported_by_master_and_not_between():
+    bold = _k(500, (445.86, 600))  # 3 units right of the edge: outside in Bold
+    (finding,) = _found(_entry(("Light", 0, LIGHT), ("Bold", 1000, bold)))
+
+    assert finding.code == BURIED_POINT_WANDERS
+    assert finding.raw_data["sourceName"] == "Bold"
+    assert finding.raw_data["location"] == {"Weight": 1000.0}
+    (point,) = finding.raw_data["points"]
+    assert point["mastersBuried"] == ["Light"]
+    assert [m["sourceName"] for m in point["mastersOutside"]] == ["Bold"]
+    assert point["depth"] == pytest.approx(2.6, abs=0.2)  # 3 units across, along the slant
+    assert "Bold.ufo (Bold)" in finding.location
+
+
+def test_the_tolerance_decides_what_counts_as_out():
+    # the arm tip half a unit inside the edge in both masters
+    light = _k(100, (99.5, 100))
+    bold = _k(100, (99.5, 600))
+    entry = _entry(("Light", 0, light), ("Bold", 1000, bold))
+    assert _found(entry) == []  # not buried by more than the default unit
+    # with zero tolerance it is buried, and stays inside: still nothing
+    assert _found(entry, topology_tolerance=0) == []
+
+
+def test_points_that_do_not_correspond_say_so():
+    x, y = 437.86, 600
+    turned = FakeGlyph(
+        "K",
+        contours=[
+            [(0, 0), (100, 0), (500, 700), (0, 700)],
+            [(x + 300, y - 50), (x + 300, y + 50), (x, y)],  # the tip drawn last
+        ],
+    )
+    found = _found(_entry(("Light", 0, LIGHT), ("Bold", 1000, turned)))
+
+    assert found
+    for finding in found:
+        (problem,) = finding.raw_data["correspondence"]
+        assert problem["type"] == "wrong_start_point"
+        assert problem["contour"] == 1
+        assert "do not correspond" in finding.details
+
+
+def test_the_phase_needs_asking_for():
+    entry = _entry(("Light", 0, LIGHT), ("Bold", 1000, BOLD))
+    assert not [r for r in lint(entry) if r.code in (BURIED_POINT_SURFACES, BURIED_POINT_WANDERS)]
+
+
+def test_without_numpy_the_phase_refuses_to_start(monkeypatch):
+    monkeypatch.setitem(sys.modules, "numpy", None)
+    with pytest.raises(ImportError, match="designspace-lint\\[topology\\]"):
+        Linter(designspace=_entry(("Light", 0, LIGHT), ("Bold", 1000, BOLD)), topology=True)
+
+
+def test_each_glyph_is_reported_to_the_progress_bar():
+    ticks = []
+    linter = Linter(designspace=_entry(("Light", 0, LIGHT), ("Bold", 1000, BOLD)), topology=True)
+    list(linter.run(on_progress=lambda done, total, message: ticks.append(message)))
+    assert "Checking outlines between masters (2/2)" in ticks
+
+
+def test_the_command_line_runs_it(monkeypatch, capsys):
+    entry = _entry(("Light", 0, LIGHT), ("Bold", 1000, BOLD))
+    monkeypatch.setattr("designspace_lint.lint_path", lambda path, **kwargs: lint(entry, **kwargs))
+    assert cli.main(["x.designspace", "--topology", "--json"]) == 1
+    rows = json.loads(capsys.readouterr().out)
+    (row,) = [r for r in rows if r["code"] == f"4.{BURIED_POINT_SURFACES}"]
+    assert row["raw_data"]["points"][0]["contour"] == 1
+
+
+def test_point_tags_follow_the_ufo_segment_types():
+    contour = [
+        (0, 0, "line"),
+        (0, 50, None),
+        (50, 100, None),
+        (100, 100, "curve"),
+        (120, 80, None),
+        (100, 0, "qcurve"),
+    ]
+    tags = topology.point_tags(contour)
+    assert tags == [
+        topology.TAG_ON,
+        topology.TAG_CUBIC,
+        topology.TAG_CUBIC,
+        topology.TAG_ON,
+        topology.TAG_CONIC,
+        topology.TAG_ON,
+    ]
+    assert topology.point_tags([(0, 0, None), (10, 0, None)]) == [topology.TAG_CONIC] * 2
+
+
+def test_a_host_can_check_one_location_with_the_same_rule():
+    from fontTools.varLib.models import VariationModel
+
+    masters = topology.GlyphMasters(
+        name="K",
+        sources=("Light", "Bold"),
+        model=VariationModel([{"Weight": 0.0}, {"Weight": 1.0}], axisOrder=["Weight"]),
+        points=np.array(
+            [
+                [(0, 0), (100, 0), (100, 700), (0, 700), (95, 100), (395, 50), (395, 150)],
+                [
+                    (0, 0),
+                    (100, 0),
+                    (500, 700),
+                    (0, 700),
+                    (437.86, 600),
+                    (737.86, 550),
+                    (737.86, 650),
+                ],
+            ],
+            dtype=float,
+        ),
+        contours=np.array([3, 6]),
+        tags=np.array([topology.TAG_ON] * 7, dtype=np.int8),
+        design_axes={"Weight": (0, 0, 1000)},
+    )
+    checker = topology.BuriedPointChecker(masters)
+    assert checker.at({"Weight": 0.0}) == []
+    ((contour, point, depth, (x, y)),) = checker.at({"Weight": 0.5})
+    assert (contour, point) == (1, 0)
+    assert depth == pytest.approx(63.9, abs=0.2)
+    assert (x, y) == pytest.approx(topology.point_at(masters, {"Weight": 0.5}, 1, 0))
+
+
+def test_a_sparse_layer_master_that_keeps_the_tip_inside_fixes_it():
+    medium = _k(300, (195, 350))
+    entry = build_designspace(
+        axes=[WEIGHT],
+        sources=[
+            {
+                "name": "Light",
+                "location": {"Weight": 0},
+                "glyphs": {"K": LIGHT, "space": FakeGlyph("space", unicodes=[0x20])},
+                "layers": {"medium": {"K": medium}},
+            },
+            {
+                "name": "Medium",
+                "path": "/tmp/fake/Light.ufo",
+                "layer_name": "medium",
+                "location": {"Weight": 500},
+            },
+            {
+                "name": "Bold",
+                "location": {"Weight": 1000},
+                "glyphs": {"K": BOLD, "space": FakeGlyph("space", unicodes=[0x20])},
+            },
+        ],
+    )
+    found = _found(entry)
+    assert all(p["depth"] < 20 for r in found for p in r.raw_data["points"])
+    assert all("Medium" in p["mastersBuried"] for r in found for p in r.raw_data["points"])
+
+
+def test_each_discrete_slice_is_its_own_space():
+    italic = {"name": "Italic", "tag": "ital", "values": [0, 1], "default": 0}
+    upright = _k(100, (95, 600))  # an upright stem: nothing comes out
+    sources = []
+    for name, weight, ital, glyph in (
+        ("Light", 0, 0, upright),
+        ("Bold", 1000, 0, upright),
+        ("LightItalic", 0, 1, LIGHT),
+        ("BoldItalic", 1000, 1, BOLD),
+    ):
+        sources.append(
+            {"name": name, "location": {"Weight": weight, "Italic": ital}, "glyphs": {"K": glyph}}
+        )
+    (finding,) = _found(build_designspace(axes=[WEIGHT, italic], sources=sources))
+    assert finding.code == BURIED_POINT_SURFACES
+    assert finding.raw_data["discreteLocation"] == {"Italic": 1}
+    assert finding.raw_data["location"] == {"Weight": 500.0}
+
+
+def test_the_weights_at_many_locations_are_fonttools_own():
+    import itertools
+
+    from fontTools.varLib.models import VariationModel
+
+    axes = ["A", "B", "C"]
+    masters = [
+        {},
+        {"A": 1},
+        {"A": -1},
+        {"B": 1},
+        {"A": 1, "B": 1},
+        {"C": 0.4},
+        {"A": 0.5, "C": 1},
+        {"B": -0.6, "C": -1},
+    ]
+    model = VariationModel(masters, axisOrder=axes)
+    grid = [-1, -0.7, -0.25, 0, 0.15, 0.4, 0.6, 1]
+    locations = [dict(zip(axes, c, strict=True)) for c in itertools.product(grid, repeat=3)]
+    fast = topology.master_scalars_at(model, locations)
+    slow = np.array([model.getMasterScalars(location) for location in locations])
+    assert np.abs(fast - slow).max() < 1e-12

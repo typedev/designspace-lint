@@ -70,6 +70,10 @@ INTERPOLATION_PHASE = ("interpolation", "Checking point correspondence...")
 # convention, not a build consequence, so it runs only when asked for.
 CONSTRUCTION_PHASE = ("construction", "Checking composite construction...")
 
+# Opt-in: the outlines between the masters, sampled where the variable font
+# draws them (4.27, 4.28). Thousands of locations per glyph, with NumPy.
+TOPOLOGY_PHASE = ("topology", "Checking outlines between masters...")
+
 # 0.1: a check raised and the rest of its phase went unchecked. The file
 # category is where problems with the run itself live.
 PHASE_FAILED = 1
@@ -84,7 +88,7 @@ DOCUMENT_PHASES = ("file", "geometry", "labels")
 ALWAYS_RUN = ("file", "geometry")
 
 # The phases a `glyphs=` restriction applies to.
-GLYPH_PHASES = ("glyphs", "interpolation", "construction")
+GLYPH_PHASES = ("glyphs", "interpolation", "construction", "topology")
 
 
 def phase_failed(phase_id: str, exc: Exception, where: str = "") -> CheckResult:
@@ -126,6 +130,8 @@ class Linter:
         construction: bool = False,
         phases: "list[str] | None" = None,
         glyphs: "list[str] | None" = None,
+        topology: bool = False,
+        topology_tolerance: float | None = None,
     ):
         """
         Args:
@@ -144,8 +150,15 @@ class Linter:
                 "geometry" always run. The whole-document source and instance
                 checks run with the "sources" and "instances" phases.
             glyphs: check only these glyphs in the glyph phases ("glyphs",
-                "interpolation", "construction"). The engine still splits by
-                discrete axes.
+                "interpolation", "construction", "topology"). The engine still
+                splits by discrete axes.
+            topology: also sample the outlines between the masters for
+                buried points that come out of the ink (4.27, 4.28). Needs
+                NumPy (``designspace-lint[topology]``); raises ImportError
+                without it.
+            topology_tolerance: units a buried point may come out and still
+                count as on the edge (default 1; 0 reports any deviation
+                the measurement can tell).
         """
         self._entry = designspace
         self._path = path or (designspace.path if designspace else None)
@@ -160,6 +173,17 @@ class Linter:
             after = "interpolation" if interpolatable else "glyphs"
             at = [p[0] for p in self._phases].index(after)
             self._phases.insert(at + 1, CONSTRUCTION_PHASE)
+        if topology:
+            try:
+                import numpy  # noqa: F401
+            except ImportError as exc:
+                raise ImportError(
+                    "the topology phase needs NumPy: pip install 'designspace-lint[topology]'"
+                ) from exc
+            ids = [p[0] for p in self._phases]
+            after = next(p for p in ("construction", "interpolation", "glyphs") if p in ids)
+            self._phases.insert(ids.index(after) + 1, TOPOLOGY_PHASE)
+        self._topology_tolerance = topology_tolerance
 
         self._selected: set[str] | None = None
         if phases is not None:
@@ -180,6 +204,10 @@ class Linter:
             from .checkers.construction import ConstructionChecker
 
             self._checkers["construction"] = ConstructionChecker
+        if topology:
+            from .checkers.topology import TopologyChecker
+
+            self._checkers["topology"] = TopologyChecker
 
     @property
     def _cancelled(self) -> bool:
@@ -314,6 +342,8 @@ class Linter:
         if checker is None:
             return checker
         checker.cancel = self._cancel
+        if phase_id == "topology":
+            checker.tolerance = self._topology_tolerance
         if self._glyphs is not None and phase_id in GLYPH_PHASES:
             checker.only_glyphs = set(self._glyphs)
         return checker
