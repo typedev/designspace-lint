@@ -35,6 +35,10 @@ BURIED_POINT_WANDERS = 28
 
 # How many points a finding's text lists; raw_data has them all.
 _LISTED = 5
+# How many sets of masters keep their sampled weights (locations × masters
+# each, a few hundred MB on a large family): glyphs that skip the same
+# masters come together rarely enough that a few suffice.
+_KEPT_WEIGHTS = 4
 
 
 def _number(value: float) -> str:
@@ -176,6 +180,8 @@ class TopologyChecker(GlyphsChecker):
             items.append([(x, y) for c in outline.contours for x, y, _kind in c])
         key = tuple(item is not None for item in items)
         if key not in sampled:
+            while len(sampled) >= _KEPT_WEIGHTS:
+                sampled.pop(next(iter(sampled)))
             sub_model, _ = model.getSubModel(items)
             masters_of = [m for m, present in enumerate(key) if present]
             glyph_masters = topology.GlyphMasters(

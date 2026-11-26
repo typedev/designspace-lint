@@ -293,3 +293,27 @@ def test_the_weights_at_many_locations_are_fonttools_own():
     fast = topology.master_scalars_at(model, locations)
     slow = np.array([model.getMasterScalars(location) for location in locations])
     assert np.abs(fast - slow).max() < 1e-12
+
+
+def test_at_most_two_axes_sit_between_masters_at_once():
+    from fontTools.varLib.models import VariationModel
+
+    axes = ["A", "B", "C"]
+    corners = [{}, {"A": 1}, {"B": 1}, {"C": 1}]
+    masters = topology.GlyphMasters(
+        "x",
+        (),
+        VariationModel(corners, axisOrder=axes),
+        np.zeros((4, 0, 2)),
+        [],
+        [],
+        {name: (0, 0, 1) for name in axes},
+    )
+    whole = topology.sample_locations(masters, axes_between=None)
+    two = topology.sample_locations(masters)
+    assert len(whole) == 5**3  # 0, the quarters, 1 on each axis
+    # 2^3 corners, 3·3·2^2 with one axis between, 3·3^2·2 with two
+    assert len(two) == 8 + 36 + 54
+    key = lambda loc: tuple(loc[name] for name in axes)  # noqa: E731
+    assert {key(loc) for loc in two} <= {key(loc) for loc in whole}
+    assert all(sum(loc[name] not in (0.0, 1.0) for name in axes) <= 2 for loc in two)

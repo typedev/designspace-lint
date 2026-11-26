@@ -19,8 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   varLib's model puts the instances: over the masters that draw it (the
   sub-model a sparse master gets; a non-default master with an empty glyph
   counts as leaving it out, as varLib's gvar does), per axis at the masters'
-  values, the ends, the default and the quarters between them, the product
-  over the axes.
+  values, the ends and the default, and the quarters between them, with at
+  most two axes between those values at once. The whole product grows as a
+  power of the axes (541 125 locations per glyph on 6-axis GoogleSansFlex,
+  against 64 000), and on both families measured it found no point the two
+  axes at a time missed; the worst depth it reports is within 4 units.
   - **4.27 BURIED_POINT_SURFACES**, warning: a point that one master hides at
     least, and that no master around a location leaves outside, comes out of
     the ink there. One finding per glyph; `raw_data["points"]` gives each
@@ -37,12 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     that first.
   - `topology_tolerance` (`--topology-tolerance`, default 1 unit): how far a
     point may come out and still count as on the edge.
-  - On a large 4-axis designspace (84 masters) it gives
-    exactly Font-Rover's 57 points in 36 glyphs, to the hundredth of a unit,
-    and one point more in 4.28, in a glyph some full masters leave out:
-    varLib builds it from the others, Font-Rover's interpolator does not. The
-    phase adds 49 s to the 34 s of a default run; Font-Rover's own scan took
-    102 s.
+  - On a large 4-axis designspace (84 masters) it finds exactly Font-Rover's
+    57 points in 36 glyphs, and one point more in 4.28, in a glyph some full
+    masters leave out: varLib builds it from the others, Font-Rover's
+    interpolator does not. A default run takes 34 s, with `--topology` 69 s;
+    Font-Rover's own scan alone took 102 s. On GoogleSansFlex (657 masters,
+    6 axes) a default run takes 87 s, with `--topology` 207 s and 4 % more
+    memory.
 - **`designspace_lint.topology`**, the rule as a public module: `GlyphMasters`
   (the same fields as Font-Rover's), `BuriedPointChecker` (`.at(location)`
   for one location, `.wandering()`), `buried_points_surfacing`,

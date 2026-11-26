@@ -49,7 +49,7 @@ CODE_MODULES = {
     "checkers/glyphorder.py": 9,
     "checkers/labels.py": 10,
 }
-NOT_CODES = {"TOLERANCE", "EPSILON", "MIN_AREA_THRESHOLD", "_LISTED"}
+NOT_CODES = {"TOLERANCE", "EPSILON", "MIN_AREA_THRESHOLD", "_LISTED", "_KEPT_WEIGHTS"}
 
 
 def _constants(path: Path) -> dict[str, int]:
